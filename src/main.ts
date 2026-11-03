@@ -9,6 +9,8 @@ import skyVertexShader from './world/sky/sky.vert.glsl?raw';
 import skyFragmentShader from './world/sky/sky.frag.glsl?raw';
 import bodyVertexShader from './world/sky/celestial-body.vert.glsl?raw';
 import bodyFragmentShader from './world/sky/celestial-body.frag.glsl?raw';
+import { InputController } from './input/InputController';
+import { requireEl } from './ui/dom';
 import { installTestHooks } from './testing/testHooks';
 import { BIOMES as BIOME_CONFIG } from './config/biomes';
 import { CAMERA_MODES } from './config/cameras';
@@ -1345,72 +1347,44 @@ function updateScenery(playerZ) {
 /********************************************************************
  * 5. INPUT LISTENERS & UI HOOKS
  ********************************************************************/
-const keys = {};
-window.addEventListener('keydown', (e) => {
-  keys[e.code] = true;
-  if (e.code === 'KeyC') toggleCruiseControl();
-  if (e.code === 'KeyR') radio.changeStation(1);
-  if (e.code === 'KeyB') cycleBiome();
-  if (e.code === 'KeyV') cycleCamera();
-  if (e.code === 'KeyL') toggleHeadlights();
-  if (e.code === 'KeyH') toggleZenMode();
-});
-window.addEventListener('keyup', (e) => {
-  keys[e.code] = false;
-});
-
-// Mouse / Touch Look-Around Drag on Canvas
-let prevPointer = { x: 0, y: 0 };
-renderer.domElement.addEventListener('mousedown', (e) => {
-  state.isDraggingCamera = true;
-  prevPointer = { x: e.clientX, y: e.clientY };
-});
-window.addEventListener('mousemove', (e) => {
-  if (!state.isDraggingCamera) return;
-  const dx = e.clientX - prevPointer.x;
-  const dy = e.clientY - prevPointer.y;
-  prevPointer = { x: e.clientX, y: e.clientY };
-  state.cameraDragYaw = Math.max(-0.85, Math.min(0.85, state.cameraDragYaw - dx * 0.0035));
-  state.cameraDragPitch = Math.max(-0.25, Math.min(0.35, state.cameraDragPitch + dy * 0.0025));
-});
-window.addEventListener('mouseup', () => {
-  state.isDraggingCamera = false;
-});
-
-// Touch Driving Buttons
-function bindTouchHold(id, onDown, onUp) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    onDown();
-  });
-  el.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    onUp();
-  });
-  el.addEventListener('mousedown', onDown);
-  el.addEventListener('mouseup', onUp);
-}
-bindTouchHold(
-  'touch-left',
-  () => (keys['ArrowLeft'] = true),
-  () => (keys['ArrowLeft'] = false),
-);
-bindTouchHold(
-  'touch-right',
-  () => (keys['ArrowRight'] = true),
-  () => (keys['ArrowRight'] = false),
-);
-bindTouchHold(
-  'touch-gas',
-  () => (keys['ArrowUp'] = true),
-  () => (keys['ArrowUp'] = false),
-);
-bindTouchHold(
-  'touch-brake',
-  () => (keys['ArrowDown'] = true),
-  () => (keys['ArrowDown'] = false),
+const input = new InputController(
+  {
+    onCommand(command) {
+      switch (command) {
+        case 'cruise':
+          return toggleCruiseControl();
+        case 'radioNext':
+          return radio.changeStation(1);
+        case 'biome':
+          return cycleBiome();
+        case 'camera':
+          return cycleCamera();
+        case 'headlights':
+          return toggleHeadlights();
+        case 'zen':
+          return toggleZenMode();
+      }
+    },
+    onLookStart() {
+      state.isDraggingCamera = true;
+    },
+    onLookMove(dx, dy) {
+      state.cameraDragYaw = Math.max(-0.85, Math.min(0.85, state.cameraDragYaw - dx * 0.0035));
+      state.cameraDragPitch = Math.max(-0.25, Math.min(0.35, state.cameraDragPitch + dy * 0.0025));
+    },
+    onLookEnd() {
+      state.isDraggingCamera = false;
+    },
+  },
+  {
+    lookTarget: renderer.domElement,
+    touchPads: [
+      { element: requireEl('touch-left'), action: 'left' },
+      { element: requireEl('touch-right'), action: 'right' },
+      { element: requireEl('touch-gas'), action: 'throttle' },
+      { element: requireEl('touch-brake'), action: 'brake' },
+    ],
+  },
 );
 
 // UI Button Listeners
@@ -1639,10 +1613,10 @@ function animate() {
   sunUniforms.uTime.value = elapsed;
 
   // 2. Throttle, Braking & Cruise Control Physics
-  const gasPressed = keys['KeyW'] || keys['ArrowUp'];
-  const brakePressed = keys['KeyS'] || keys['ArrowDown'];
-  const leftPressed = keys['KeyA'] || keys['ArrowLeft'];
-  const rightPressed = keys['KeyD'] || keys['ArrowRight'];
+  const gasPressed = input.state.isActive('throttle');
+  const brakePressed = input.state.isActive('brake');
+  const leftPressed = input.state.isActive('left');
+  const rightPressed = input.state.isActive('right');
 
   if (gasPressed) {
     state.speedKmh = Math.min(220, state.speedKmh + 48 * dt);

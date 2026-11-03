@@ -25,6 +25,12 @@
     font-family: 'Inter Variable', 'Inter', sans-serif;
   }
 
+  /* Pointer events drive look-around and the touch pads; stop the browser scrolling/zooming. */
+  #canvas-container canvas,
+  #touch-controls button {
+    touch-action: none;
+  }
+
   #canvas-container {
     position: absolute;
     inset: 0;
