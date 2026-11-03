@@ -10,6 +10,7 @@ import skyFragmentShader from './world/sky/sky.frag.glsl?raw';
 import bodyVertexShader from './world/sky/celestial-body.vert.glsl?raw';
 import bodyFragmentShader from './world/sky/celestial-body.frag.glsl?raw';
 import { InputController } from './input/InputController';
+import { requireEl } from './ui/dom';
 import { installTestHooks } from './testing/testHooks';
 import { BIOMES as BIOME_CONFIG } from './config/biomes';
 import { CAMERA_MODES } from './config/cameras';
@@ -1378,10 +1379,10 @@ const input = new InputController(
   {
     lookTarget: renderer.domElement,
     touchPads: [
-      { element: document.getElementById('touch-left'), action: 'left' },
-      { element: document.getElementById('touch-right'), action: 'right' },
-      { element: document.getElementById('touch-gas'), action: 'throttle' },
-      { element: document.getElementById('touch-brake'), action: 'brake' },
+      { element: requireEl('touch-left'), action: 'left' },
+      { element: requireEl('touch-right'), action: 'right' },
+      { element: requireEl('touch-gas'), action: 'throttle' },
+      { element: requireEl('touch-brake'), action: 'brake' },
     ],
   },
 );

@@ -5,18 +5,18 @@ import { InputController, type InputCallbacks } from '../../../src/input/InputCo
 import { InputState } from '../../../src/input/InputState';
 import { COMMAND_KEYS, DRIVE_KEYS } from '../../../src/input/keybindings';
 
-function key(type: 'keydown' | 'keyup', code: string, repeat = false): void {
-  window.dispatchEvent(new KeyboardEvent(type, { code, repeat }));
+function key(type: 'keydown' | 'keyup', code: string, repeat = false, mods: KeyboardEventInit = {}): void {
+  window.dispatchEvent(new KeyboardEvent(type, { code, repeat, ...mods }));
 }
 function pointer(
   el: Element,
   type: string,
-  init: { id?: number; x?: number; y?: number; button?: number } = {},
+  init: { id?: number; x?: number; y?: number; button?: number; kind?: string } = {},
 ): void {
   const e = new Event(type, { bubbles: true, cancelable: true });
   Object.assign(e, {
     pointerId: init.id ?? 1,
-    pointerType: 'touch',
+    pointerType: init.kind ?? 'touch',
     button: init.button ?? 0,
     clientX: init.x ?? 0,
     clientY: init.y ?? 0,
@@ -151,6 +151,50 @@ describe('InputController', () => {
     expect(cb.onLookMove).not.toHaveBeenCalled();
     controller.releaseAll();
     expect(cb.onLookEnd).toHaveBeenCalledOnce();
+  });
+
+  it('ignores commands with Ctrl/Meta/Alt so browser shortcuts (Ctrl+R) stay untouched', () => {
+    key('keydown', 'KeyR', false, { ctrlKey: true });
+    key('keydown', 'KeyL', false, { metaKey: true });
+    key('keydown', 'KeyH', false, { altKey: true });
+    expect(cb.onCommand).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pad held while one of two fingers lifts', () => {
+    pointer(pad, 'pointerdown', { id: 1 });
+    pointer(pad, 'pointerdown', { id: 2 });
+    pointer(pad, 'pointerup', { id: 1 });
+    expect(controller.state.isActive('throttle')).toBe(true);
+    pointer(pad, 'pointerup', { id: 2 });
+    expect(controller.state.isActive('throttle')).toBe(false);
+  });
+
+  it('ignores secondary mouse buttons on pads and the canvas', () => {
+    pointer(pad, 'pointerdown', { kind: 'mouse', button: 2 });
+    expect(controller.state.isActive('throttle')).toBe(false);
+    pointer(look, 'pointerdown', { kind: 'mouse', button: 2 });
+    expect(cb.onLookStart).not.toHaveBeenCalled();
+  });
+
+  it('a second finger does not take over a look gesture', () => {
+    pointer(look, 'pointerdown', { id: 1, x: 0 });
+    pointer(look, 'pointerdown', { id: 2, x: 100 });
+    pointer(look, 'pointerup', { id: 2 });
+    pointer(look, 'pointermove', { id: 1, x: 5 });
+    expect(cb.onLookStart).toHaveBeenCalledOnce();
+    expect(cb.onLookEnd).not.toHaveBeenCalled();
+    expect(cb.onLookMove).toHaveBeenCalledWith(5, 0);
+  });
+
+  it('stops moving the camera after releaseAll, and ends the look when capture is lost', () => {
+    pointer(look, 'pointerdown', { id: 1 });
+    controller.releaseAll();
+    pointer(look, 'pointermove', { id: 1, x: 40 });
+    expect(cb.onLookMove).not.toHaveBeenCalled();
+
+    pointer(look, 'pointerdown', { id: 3 });
+    pointer(look, 'lostpointercapture', { id: 3 });
+    expect(cb.onLookEnd).toHaveBeenCalledTimes(2);
   });
 
   it('stops listening after dispose', () => {
