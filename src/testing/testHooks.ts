@@ -10,10 +10,10 @@ export interface HdHooks {
   setCamera(index: number): void;
   hideIgnitionOverlay(): void;
   /**
-   * Runs exactly `count` frames synchronously with a fixed 1/60 s timestep, drawing only the last
-   * one. Use with the fake
-   * clock paused, so the real requestAnimationFrame loop never interleaves: frame timing then
-   * cannot leak into the result (page load leaks a few ms of real time into the fake clock).
+   * Runs exactly `count` frames synchronously with a fixed 1/60 s timestep and draws only the
+   * last one. Use it with the fake clock paused, so the app's own requestAnimationFrame loop never
+   * interleaves: page load leaks a few ms of real time into the fake clock, and rAF-driven
+   * stepping would carry that into every frame's dt.
    */
   advanceFrames(count: number): void;
   framesRendered(): number;
@@ -26,7 +26,7 @@ declare global {
 }
 
 /** Phase 1 shape of the app internals the hooks need; narrows as modules are extracted. */
-interface LegacyInternals {
+export interface LegacyInternals {
   state: {
     currentBiomeIdx: number;
     targetBiomeIdx: number;
@@ -42,12 +42,13 @@ interface LegacyInternals {
   animate: () => void;
 }
 
-function el(id: string): HTMLElement {
-  const node = document.getElementById(id);
-  if (!node) throw new Error(`#${id} not found`);
-  return node;
-}
-
+/**
+ * Installs `window.__HD__`.
+ *
+ * Must stay **self-contained** (no references to anything outside its body): the e2e driver also
+ * injects this exact function into the legacy prototype via `installTestHooks.toString()`, so both
+ * targets share one implementation.
+ */
 export function installTestHooks({
   state,
   BIOMES,
@@ -56,6 +57,12 @@ export function installTestHooks({
   clock,
   animate,
 }: LegacyInternals): void {
+  const el = (id: string): HTMLElement => {
+    const node = document.getElementById(id);
+    if (!node) throw new Error(`#${id} not found`);
+    return node;
+  };
+
   let frames = 0;
   const render = renderer.render.bind(renderer);
   renderer.render = (...args) => {
@@ -65,15 +72,19 @@ export function installTestHooks({
 
   window.__HD__ = {
     framesRendered: () => frames,
+
     advanceFrames(count) {
       const step = 1 / 60;
+      // Fixed timestep. three r128's getElapsedTime() calls getDelta(), so it is made read-only.
       clock.getDelta = () => {
         clock.elapsedTime += step;
         return step;
       };
-      // three r128's getElapsedTime() calls getDelta(); keep it read-only here.
       clock.getElapsedTime = () => clock.elapsedTime;
-      // Only the last frame is drawn: simulation and camera smoothing run outside render(), and
+      // animate() re-queues itself via requestAnimationFrame; stepping must not add extra loops.
+      const raf = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = () => 0;
+      // Draw only the last frame: simulation and camera smoothing run outside render(), and
       // software WebGL in CI is far too slow to draw every intermediate frame.
       const draw = renderer.render.bind(renderer);
       renderer.render = () => undefined;
@@ -84,8 +95,14 @@ export function installTestHooks({
         }
       } finally {
         renderer.render = draw;
+        window.requestAnimationFrame = raf;
+        // Remove the own-property overrides so Clock.prototype's methods apply again.
+        Reflect.deleteProperty(clock, 'getDelta');
+        Reflect.deleteProperty(clock, 'getElapsedTime');
+        clock.oldTime = performance.now();
       }
     },
+
     setBiome(i) {
       const biome = BIOMES[i];
       if (!biome) throw new RangeError(`no biome ${i}`);
@@ -97,14 +114,17 @@ export function installTestHooks({
       dot.style.backgroundColor = biome.dotColor;
       dot.style.boxShadow = `0 0 10px ${biome.dotColor}`;
     },
+
     setSkyTime(p, frozen) {
       state.celestialTime = p;
       if (frozen) state.celestialSpeed = 0;
     },
+
     setCamera(i) {
       state.cameraMode = i;
       el('camera-label').textContent = CAMERA_MODES[i] ?? '';
     },
+
     hideIgnitionOverlay() {
       el('ignition-overlay').style.display = 'none';
     },

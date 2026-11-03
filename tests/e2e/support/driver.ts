@@ -1,5 +1,5 @@
 import { test, type Page } from '@playwright/test';
-import type { HdHooks } from '../../../src/testing/testHooks';
+import { installTestHooks, type HdHooks } from '../../../src/testing/testHooks';
 import { freezeClock, seedRandom } from './determinism';
 
 export type Target = 'legacy' | 'app';
@@ -7,7 +7,7 @@ export type Target = 'legacy' | 'app';
 /**
  * Which build the current test runs against, from the Playwright project (`legacy` | `app`).
  * Both expose the same `window.__HD__` contract (src/testing/testHooks.ts); for the prototype,
- * `installLegacyHooks` shims it. One contract lets the same specs and baselines gate both.
+ * `installLegacyHooks` injects it. One contract lets the same specs and baselines gate both.
  */
 export function currentTarget(): Target {
   return test.info().project.metadata.target === 'app' ? 'app' : 'legacy';
@@ -17,48 +17,15 @@ function entryPath(target: Target): string {
   return target === 'legacy' ? 'legacy/index.html' : './';
 }
 
-/** Defines `window.__HD__` on the legacy page using its top-level (lexical) globals. */
+/**
+ * Installs the app's own `installTestHooks` into the legacy page, passing the prototype's
+ * top-level (lexical) globals, so both targets run the exact same hook implementation.
+ * Evaluated as a string because those globals are invisible to TypeScript.
+ */
 async function installLegacyHooks(page: Page): Promise<void> {
-  // A string, because the legacy globals (state, BIOMES, …) are not visible to TypeScript.
-  await page.evaluate(`
-    let frames = 0;
-    const render = renderer.render.bind(renderer);
-    renderer.render = (...args) => { frames++; return render(...args); };
-    window.__HD__ = {
-      framesRendered() { return frames; },
-      advanceFrames(count) {
-        const step = 1 / 60;
-        clock.getDelta = () => { clock.elapsedTime += step; return step; };
-        clock.getElapsedTime = () => clock.elapsedTime;
-        const draw = renderer.render;
-        renderer.render = () => {};
-        try {
-          for (let i = 0; i < count; i++) { if (i === count - 1) renderer.render = draw; animate(); }
-        } finally { renderer.render = draw; }
-      },
-      setBiome(i) {
-        state.currentBiomeIdx = i;
-        state.targetBiomeIdx = i;
-        state.biomeLerp = 1;
-        const b = BIOMES[i];
-        document.getElementById('current-biome-label').textContent = b.name;
-        const dot = document.getElementById('biome-indicator-dot');
-        dot.style.backgroundColor = b.dotColor;
-        dot.style.boxShadow = '0 0 10px ' + b.dotColor;
-      },
-      setSkyTime(p, frozen) {
-        state.celestialTime = p;
-        if (frozen) state.celestialSpeed = 0;
-      },
-      setCamera(i) {
-        state.cameraMode = i;
-        document.getElementById('camera-label').textContent = CAMERA_MODES[i];
-      },
-      hideIgnitionOverlay() {
-        document.getElementById('ignition-overlay').style.display = 'none';
-      },
-    };
-  `);
+  await page.evaluate(
+    `(${installTestHooks.toString()})({ state, BIOMES, CAMERA_MODES, renderer, clock, animate })`,
+  );
 }
 
 export interface OpenOptions {
