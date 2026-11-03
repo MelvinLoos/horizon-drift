@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { framesRendered, openApp, stepFrames } from './support/driver';
+import { currentTarget, framesRendered, openApp, stepFrames } from './support/driver';
 
 /** Collects uncaught exceptions and console errors for the lifetime of the page. */
 function trackErrors(page: Page): string[] {
@@ -104,8 +104,8 @@ test.describe('known bugs', () => {
     await expect(page.locator('#station-name')).toHaveText('Nightcall Synthwave');
   });
 
-  test('BUG-003: holding a toggle key repeats the toggle', async ({ page }) => {
-    test.fail();
+  test('BUG-003: holding a toggle key must not repeat the toggle', async ({ page }) => {
+    test.fail(currentTarget() === 'legacy', 'fixed in the app (2.3); the prototype keeps the bug');
     await openApp(page);
     await startEngine(page);
     await page.keyboard.down('KeyV');
