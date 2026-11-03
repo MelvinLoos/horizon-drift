@@ -18,7 +18,14 @@ import { HALF_WIDTH, SCENERY_COUNT, SEGMENT_LEN, TOTAL_LENGTH, X_SEGMENTS, Z_SEG
 import { paletteToColors, withThreeColors } from './world/colors';
 import { landformBlend, terrainElevation } from './world/landforms';
 import { roadDerivativeX, roadX, roadY } from './world/road';
-import { advanceCelestialTime, celestialLighting, celestialState } from './sim/celestialCycle';
+import { PALETTE_KEYS } from './config/biomes';
+import { ROAD_CORRIDOR_HALF_WIDTH } from './config/road';
+import {
+  advanceCelestialTime,
+  CELESTIAL_DISTANCE,
+  celestialLighting,
+  celestialState,
+} from './sim/celestialCycle';
 
 /********************************************************************
  * 1. BIOME & HORIZON DEFINITIONS
@@ -591,7 +598,7 @@ const starColors = new Float32Array(starCount * 3);
 for (let i = 0; i < starCount; i++) {
   const theta = Math.random() * Math.PI * 2;
   const phi = Math.random() * Math.PI * 0.44;
-  const r = 1050;
+  const r = CELESTIAL_DISTANCE;
   starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
   starPositions[i * 3 + 1] = r * Math.cos(phi) + 60;
   starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
@@ -1259,7 +1266,7 @@ function updateRoadAndTerrainGeometry(playerZ) {
           const wearFactor = Math.max(0, 1.0 - laneCenterDist * 0.65);
           tempColor.copy(asphaltBaseColor).lerp(asphaltWearColor, wearFactor * 0.65);
         }
-      } else if (distFromRoad < 11.2) {
+      } else if (distFromRoad < ROAD_CORRIDOR_HALF_WIDTH) {
         // Gravel shoulder & guardrail verge
         const vergeBlend = (distFromRoad - 8.1) / 3.1;
         tempColor.copy(shoulderColor).lerp(liveColors.terrainColor, vergeBlend);
@@ -1531,16 +1538,7 @@ function animate() {
   const bTo = BIOMES[state.targetBiomeIdx];
   const bt = state.biomeLerp;
 
-  baseBiomeColors.skyTop.copy(bFrom.skyTop).lerp(bTo.skyTop, bt);
-  baseBiomeColors.skyMid.copy(bFrom.skyMid).lerp(bTo.skyMid, bt);
-  baseBiomeColors.skyHorizon.copy(bFrom.skyHorizon).lerp(bTo.skyHorizon, bt);
-  baseBiomeColors.fogColor.copy(bFrom.fogColor).lerp(bTo.fogColor, bt);
-  baseBiomeColors.sunColor.copy(bFrom.sunColor).lerp(bTo.sunColor, bt);
-  baseBiomeColors.terrainColor.copy(bFrom.terrainColor).lerp(bTo.terrainColor, bt);
-  baseBiomeColors.mountainColor.copy(bFrom.mountainColor).lerp(bTo.mountainColor, bt);
-  baseBiomeColors.peakColor.copy(bFrom.peakColor).lerp(bTo.peakColor, bt);
-  baseBiomeColors.gridColor.copy(bFrom.gridColor).lerp(bTo.gridColor, bt);
-  baseBiomeColors.roadStripeColor.copy(bFrom.roadStripeColor).lerp(bTo.roadStripeColor, bt);
+  for (const key of PALETTE_KEYS) baseBiomeColors[key].copy(bFrom[key]).lerp(bTo[key], bt);
 
   // 1B. Day/night cycle (src/sim/celestialCycle.ts)
   state.celestialTime = advanceCelestialTime(state.celestialTime, dt, state.celestialSpeed);
@@ -1772,7 +1770,7 @@ function animate() {
   horizonSun.position.set(
     carWorldX + roadDerivativeX(state.zPos) * 95 + celestialLateralX,
     carWorldY + celestialElevationY,
-    state.zPos - 1050,
+    state.zPos - CELESTIAL_DISTANCE,
   );
   dirLight.position.set(
     carWorldX + celestialLateralX * 0.5,

@@ -44,9 +44,11 @@ export interface CelestialState {
   readonly phaseLabel: SkyPhaseLabel;
 }
 
-/** Advances the cycle phase, wrapping at 1. */
+/** Advances the cycle phase, wrapping into [0, 1) (also for negative dt or speed). */
 export function advanceCelestialTime(p: number, dt: number, speed: number): number {
-  return (p + dt * speed) % 1.0;
+  const next = (p + dt * speed) % 1.0;
+  // `%` keeps the dividend's sign; only wrap negatives so the common path stays bit-identical.
+  return next < 0 ? next + 1.0 : next;
 }
 
 export function celestialState(p: number): CelestialState {

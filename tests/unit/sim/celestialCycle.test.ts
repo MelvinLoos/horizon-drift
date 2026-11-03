@@ -37,5 +37,6 @@ describe('celestial cycle properties', () => {
   it('wraps the phase at 1', () => {
     expect(advanceCelestialTime(0.99, 2, 0.01)).toBeCloseTo(0.01, 12);
     expect(advanceCelestialTime(0.2, 0, 0.5)).toBe(0.2);
+    expect(advanceCelestialTime(0.05, 1, -0.1)).toBeCloseTo(0.95, 12);
   });
 });
