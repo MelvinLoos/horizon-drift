@@ -14,17 +14,18 @@ with a generative Tone.js synth radio.
 
 ## Commands
 
-| Command                                              | What it does                                                               |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| `pnpm install`                                       | Install dependencies and git hooks                                         |
-| `pnpm dev`                                           | Dev server — legacy prototype at <http://localhost:5173/legacy/index.html> |
-| `pnpm typecheck` / `pnpm lint` / `pnpm format:check` | Static checks                                                              |
-| `pnpm test`                                          | Unit tests (Vitest)                                                        |
-| `pnpm test:e2e`                                      | Smoke + known-bug e2e tests (Playwright, host browser)                     |
-| `pnpm test:visual`                                   | Visual regression tests in the Playwright Docker image                     |
-| `pnpm test:visual:update`                            | Re-generate visual baselines (only in a dedicated commit)                  |
-| `pnpm fixtures:legacy`                               | Re-capture oracle fixtures from the legacy prototype                       |
-| `pnpm verify`                                        | Everything CI runs                                                         |
+| Command                                              | What it does                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `pnpm install`                                       | Install dependencies and git hooks                                             |
+| `pnpm dev`                                           | Dev server: app at <http://localhost:5173/>, prototype at `/legacy/index.html` |
+| `pnpm build` / `pnpm preview`                        | Production build to `dist/` and preview it                                     |
+| `pnpm typecheck` / `pnpm lint` / `pnpm format:check` | Static checks                                                                  |
+| `pnpm test`                                          | Unit tests (Vitest)                                                            |
+| `pnpm test:e2e`                                      | Smoke + known-bug e2e tests against the built app and the prototype            |
+| `pnpm test:visual`                                   | Visual regression tests in the Playwright Docker image                         |
+| `pnpm test:visual:update`                            | Re-generate visual baselines (only in a dedicated commit)                      |
+| `pnpm fixtures:legacy`                               | Re-capture oracle fixtures from the legacy prototype                           |
+| `pnpm verify`                                        | Everything CI runs                                                             |
 
 ## Controls
 
