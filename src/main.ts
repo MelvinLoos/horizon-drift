@@ -13,10 +13,19 @@ import { installTestHooks } from './testing/testHooks';
 import { BIOMES as BIOME_CONFIG } from './config/biomes';
 import { CAMERA_MODES } from './config/cameras';
 import { CELESTIAL_PALETTE } from './config/celestial';
-import { LANDFORM_TYPES, ZONE_LENGTH } from './config/landforms';
 import { ARRANGEMENT_PHASES, RADIO_STATIONS } from './config/stations';
 import { HALF_WIDTH, SCENERY_COUNT, SEGMENT_LEN, TOTAL_LENGTH, X_SEGMENTS, Z_SEGMENTS } from './config/world';
 import { paletteToColors, withThreeColors } from './world/colors';
+import { landformBlend, terrainElevation } from './world/landforms';
+import { roadDerivativeX, roadX, roadY } from './world/road';
+import { PALETTE_KEYS } from './config/biomes';
+import { ROAD_CORRIDOR_HALF_WIDTH } from './config/road';
+import {
+  advanceCelestialTime,
+  CELESTIAL_DISTANCE,
+  celestialLighting,
+  celestialState,
+} from './sim/celestialCycle';
 
 /********************************************************************
  * 1. BIOME & HORIZON DEFINITIONS
@@ -517,127 +526,6 @@ scene.add(dirLight);
 const carFillLight = new THREE.PointLight(0xff8c42, 0.65, 14);
 scene.add(carFillLight);
 
-function getLandformBlend(z) {
-  const dist = Math.abs(z);
-  const rawZone = dist / ZONE_LENGTH;
-  const zoneIdx = Math.floor(rawZone);
-  const frac = rawZone - zoneIdx;
-  // Smoothstep transition across zone boundaries so landforms morph seamlessly
-  const blend = frac * frac * (3.0 - 2.0 * frac);
-  const idxA = zoneIdx % LANDFORM_TYPES.length;
-  const idxB = (zoneIdx + 1) % LANDFORM_TYPES.length;
-  return {
-    idxA,
-    idxB,
-    blend,
-    activeName: blend < 0.5 ? LANDFORM_TYPES[idxA].name : LANDFORM_TYPES[idxB].name,
-  };
-}
-
-// Smoothly Flowing Highway Curve X(z) and Elevation Y(z) Adapted to Landforms
-function getRoadX(z) {
-  // Multi-frequency organic highway meandering that never snaps
-  return Math.sin(z * 0.0018) * 68 + Math.cos(z * 0.00062) * 115 + Math.sin(z * 0.00023) * 160;
-}
-function getRoadY(z) {
-  // Gentle, sweeping highway grade that climbs over passes and dips into valleys
-  const macroElevation = Math.sin(z * 0.00045) * 32.0;
-  const rollingGrade = Math.sin(z * 0.0024) * 9.0 + Math.cos(z * 0.0011) * 13.5;
-  return macroElevation + rollingGrade;
-}
-function getRoadDerivativeX(z) {
-  const dz = 0.5;
-  return (getRoadX(z - dz) - getRoadX(z + dz)) / (2 * dz);
-}
-
-// Safe Modulo Hash & Value Noise (Prevents floating-point precision loss at large Z distances)
-function hash2D(x, z) {
-  const px = ((x % 2048) + 2048) % 2048;
-  const pz = ((z % 2048) + 2048) % 2048;
-  const h = Math.sin(px * 127.1 + pz * 311.7) * 43758.5453123;
-  return h - Math.floor(h);
-}
-function valueNoise(x, z) {
-  const ix = Math.floor(x);
-  const iz = Math.floor(z);
-  const fx = x - ix;
-  const fz = z - iz;
-  const ux = fx * fx * (3.0 - 2.0 * fx);
-  const uz = fz * fz * (3.0 - 2.0 * fz);
-  const a = hash2D(ix, iz);
-  const b = hash2D(ix + 1, iz);
-  const c = hash2D(ix, iz + 1);
-  const d = hash2D(ix + 1, iz + 1);
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
-}
-
-// Evaluate Specific Earthly Landform Height at a Given Point
-function evalLandformHeight(typeIdx, worldX, worldZ, distFromRoad, n1, n2, n3) {
-  // Smoothly carve a flat corridor for the roadbed (0 at road edge, 1 further out)
-  const corridorT = Math.min(1.0, Math.max(0.0, (distFromRoad - 11.2) / 55.0));
-  const roadCarve = corridorT * corridorT * (3.0 - 2.0 * corridorT);
-  const farT = Math.min(1.0, Math.max(0.0, (distFromRoad - 11.2) / (HALF_WIDTH - 11.2)));
-  const farMargin = Math.pow(farT, 1.25);
-
-  switch (typeIdx) {
-    case 0: {
-      // 0. Alpine Peaks: Towering jagged mountain ridges & high passes
-      const ridge = 1.0 - Math.abs((n1 + n2 * 0.6) * 2.0 - 1.0);
-      const sharpPeak = Math.pow(Math.max(0, ridge), 1.85);
-      return (sharpPeak * 185.0 + n3 * 42.0 + 18.0) * farMargin;
-    }
-    case 1: {
-      // 1. Rolling Foothills: Soft, lush undulating pastoral hills
-      const waves = Math.sin(worldX * 0.012 + n1 * 2.2) * 22.0 + Math.cos(worldZ * 0.011 + n2 * 2.0) * 18.0;
-      return (waves + n1 * 38.0 + n2 * 16.0 + 6.0) * roadCarve;
-    }
-    case 2: {
-      // 2. Grand Canyon Gorge: Steep terraced cliffs rising on one side, deep chasm drop-off on the other
-      const terraceRaw = (n1 * 0.75 + n2 * 0.25) * 6.0;
-      const terracedSteps =
-        (Math.floor(terraceRaw) + Math.pow(terraceRaw - Math.floor(terraceRaw), 4.0)) / 6.0;
-      const canyonWall = terracedSteps * 155.0 + 25.0;
-      const gorgeDepth =
-        -48.0 * Math.sin(Math.min(1.0, distFromRoad / 140.0) * Math.PI) + canyonWall * farMargin;
-      return worldX > getRoadX(worldZ) ? canyonWall * roadCarve : gorgeDepth * roadCarve;
-    }
-    case 3: {
-      // 3. Sweeping Prairie Plains: Wide open horizon with gentle dunes & distant buttes
-      const gentleDunes = (n1 - 0.35) * 14.0 + n2 * 8.0;
-      const distantRange = Math.pow(farT, 3.2) * (n1 * 95.0 + 20.0);
-      return (gentleDunes + distantRange) * roadCarve;
-    }
-    case 4: {
-      // 4. Red-Rock Mesas & Plateaus: Flat-topped steppes and dramatic vertical escarpments
-      const combined = n1 * 0.8 + n2 * 0.25;
-      const mesaStep = Math.min(1.0, Math.max(0.0, (combined - 0.38) * 5.5));
-      const flatTop = mesaStep * mesaStep * (3.0 - 2.0 * mesaStep);
-      const secondTier = Math.max(0.0, Math.min(1.0, (combined - 0.68) * 7.0));
-      return (flatTop * 85.0 + secondTier * 55.0 + n3 * 8.0) * roadCarve;
-    }
-    case 5:
-    default: {
-      // 5. Sunken River Valley: Road cruises along an elevated ridge/viaduct overlooking sunken basins
-      const valleyBasin = -42.0 * (1.0 - farMargin) + (n1 * 130.0 + n2 * 35.0) * Math.pow(farT, 1.7);
-      return (valleyBasin + n3 * 14.0) * roadCarve;
-    }
-  }
-}
-
-function getTerrainElevationOffset(worldX, worldZ, distFromRoad) {
-  if (distFromRoad <= 11.2) return 0;
-
-  const n1 = valueNoise(worldX * 0.0068, worldZ * 0.0068);
-  const n2 = valueNoise(worldX * 0.018 + 15.3, worldZ * 0.018 + 9.1) * 0.5;
-  const n3 = valueNoise(worldX * 0.045 - 7.4, worldZ * 0.045 + 21.8) * 0.22;
-
-  const { idxA, idxB, blend } = getLandformBlend(worldZ);
-  const hA = evalLandformHeight(idxA, worldX, worldZ, distFromRoad, n1, n2, n3);
-  const hB = evalLandformHeight(idxB, worldX, worldZ, distFromRoad, n1, n2, n3);
-
-  return hA + (hB - hA) * blend;
-}
-
 // Procedural Micro-Asphalt Texture for Realistic Wet/Specular Road Surface
 function createAsphaltBumpMap() {
   const canvas = document.createElement('canvas');
@@ -710,7 +598,7 @@ const starColors = new Float32Array(starCount * 3);
 for (let i = 0; i < starCount; i++) {
   const theta = Math.random() * Math.PI * 2;
   const phi = Math.random() * Math.PI * 0.44;
-  const r = 1050;
+  const r = CELESTIAL_DISTANCE;
   starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
   starPositions[i * 3 + 1] = r * Math.cos(phi) + 60;
   starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
@@ -1342,8 +1230,8 @@ function updateRoadAndTerrainGeometry(playerZ) {
   for (let iz = 0; iz <= Z_SEGMENTS; iz++) {
     // Extend well behind camera (+65) for Drone/Chase views and far ahead (-TOTAL_LENGTH)
     const worldZ = baseZ + 65 - iz * SEGMENT_LEN;
-    const roadCenterX = getRoadX(worldZ);
-    const roadCenterY = getRoadY(worldZ);
+    const roadCenterX = roadX(worldZ);
+    const roadCenterY = roadY(worldZ);
     const zStepIndex = Math.round(worldZ / SEGMENT_LEN);
 
     for (let ix = 0; ix <= X_SEGMENTS; ix++) {
@@ -1354,7 +1242,7 @@ function updateRoadAndTerrainGeometry(playerZ) {
       const worldX = roadCenterX + localX;
 
       const distFromRoad = Math.abs(localX);
-      const elevOffset = getTerrainElevationOffset(worldX, worldZ, distFromRoad);
+      const elevOffset = terrainElevation(worldX, worldZ, distFromRoad);
       let worldY = roadCenterY + elevOffset;
 
       // Subtle raised curb/shoulder lip
@@ -1378,7 +1266,7 @@ function updateRoadAndTerrainGeometry(playerZ) {
           const wearFactor = Math.max(0, 1.0 - laneCenterDist * 0.65);
           tempColor.copy(asphaltBaseColor).lerp(asphaltWearColor, wearFactor * 0.65);
         }
-      } else if (distFromRoad < 11.2) {
+      } else if (distFromRoad < ROAD_CORRIDOR_HALF_WIDTH) {
         // Gravel shoulder & guardrail verge
         const vergeBlend = (distFromRoad - 8.1) / 3.1;
         tempColor.copy(shoulderColor).lerp(liveColors.terrainColor, vergeBlend);
@@ -1430,12 +1318,12 @@ function updateScenery(playerZ) {
     }
     obj.userData.zOffset = z;
 
-    const rX = getRoadX(z);
-    const rY = getRoadY(z);
+    const rX = roadX(z);
+    const rY = roadY(z);
     const worldX = rX + obj.userData.offset;
 
     const distFromRoad = Math.abs(obj.userData.offset);
-    const worldY = rY + getTerrainElevationOffset(worldX, z, distFromRoad);
+    const worldY = rY + terrainElevation(worldX, z, distFromRoad);
 
     obj.position.set(worldX, worldY, z);
 
@@ -1650,70 +1538,20 @@ function animate() {
   const bTo = BIOMES[state.targetBiomeIdx];
   const bt = state.biomeLerp;
 
-  baseBiomeColors.skyTop.copy(bFrom.skyTop).lerp(bTo.skyTop, bt);
-  baseBiomeColors.skyMid.copy(bFrom.skyMid).lerp(bTo.skyMid, bt);
-  baseBiomeColors.skyHorizon.copy(bFrom.skyHorizon).lerp(bTo.skyHorizon, bt);
-  baseBiomeColors.fogColor.copy(bFrom.fogColor).lerp(bTo.fogColor, bt);
-  baseBiomeColors.sunColor.copy(bFrom.sunColor).lerp(bTo.sunColor, bt);
-  baseBiomeColors.terrainColor.copy(bFrom.terrainColor).lerp(bTo.terrainColor, bt);
-  baseBiomeColors.mountainColor.copy(bFrom.mountainColor).lerp(bTo.mountainColor, bt);
-  baseBiomeColors.peakColor.copy(bFrom.peakColor).lerp(bTo.peakColor, bt);
-  baseBiomeColors.gridColor.copy(bFrom.gridColor).lerp(bTo.gridColor, bt);
-  baseBiomeColors.roadStripeColor.copy(bFrom.roadStripeColor).lerp(bTo.roadStripeColor, bt);
+  for (const key of PALETTE_KEYS) baseBiomeColors[key].copy(bFrom[key]).lerp(bTo[key], bt);
 
-  // 1B. Continuous Day-Night & Sun-Moon Celestial Cycle
-  // Cycle phase p in [0, 1):
-  // 0.00 -> 0.50: Sun rises, arcs across sky, slowly sets and disappears below horizon
-  // 0.50 -> 1.00: Moon rises, arcs across starlit night sky, slowly sets and disappears
-  state.celestialTime = (state.celestialTime + dt * state.celestialSpeed) % 1.0;
-  const p = state.celestialTime;
-
-  let isMoon = 0.0;
-  let bodyArc = 0.0; // 0 at rise, 0.5 at zenith, 1.0 at set
-  if (p < 0.5) {
-    isMoon = 0.0;
-    bodyArc = p / 0.5;
-  } else {
-    isMoon = 1.0;
-    bodyArc = (p - 0.5) / 0.5;
-  }
-
-  // Smooth elevation curve: starts below horizon (-55), crests at (+215), sets below horizon (-55)
-  const sinArc = Math.sin(bodyArc * Math.PI);
-  const celestialElevationY = -55.0 + sinArc * 270.0;
-  // Gentle horizontal drift across the forward horizon as it arcs
-  const celestialLateralX = Math.cos(bodyArc * Math.PI) * 145.0;
-  // Fade disc opacity smoothly as it dips below the mountain/horizon line
-  const bodyOpacity = Math.max(0.0, Math.min(1.0, (celestialElevationY + 38.0) / 52.0));
-
-  // Compute blend weights for Day, Golden Sunset/Dawn, Twilight, and Starlit Night
-  let goldenWeight = 0.0;
-  let dayWeight = 0.0;
-  let nightWeight = 0.0;
-  let twilightWeight = 0.0;
-  let phaseLabel = 'Golden Sunset';
-
-  if (p < 0.5) {
-    // Daytime & Golden Hour Arc
-    if (bodyArc > 0.18 && bodyArc < 0.82) {
-      dayWeight = Math.sin(((bodyArc - 0.18) / 0.64) * Math.PI);
-      goldenWeight = 1.0 - dayWeight;
-      phaseLabel = dayWeight > 0.55 ? 'High Daylight' : bodyArc < 0.5 ? 'Morning Gold' : 'Golden Sunset';
-    } else {
-      // Sunrise (0..0.18) or Sunset (0.82..1.0)
-      const edgeT = bodyArc <= 0.18 ? bodyArc / 0.18 : (1.0 - bodyArc) / 0.18;
-      goldenWeight = Math.sin(edgeT * Math.PI * 0.5);
-      twilightWeight = 1.0 - goldenWeight;
-      phaseLabel = bodyArc < 0.5 ? 'Dawn Break' : 'Dusk & Sunset';
-    }
-  } else {
-    // Nighttime & Moon Arc
-    nightWeight = Math.sin(bodyArc * Math.PI);
-    twilightWeight = 1.0 - nightWeight;
-    if (bodyArc < 0.15) phaseLabel = 'Twilight Moonrise';
-    else if (bodyArc > 0.85) phaseLabel = 'Moonset & Pre-Dawn';
-    else phaseLabel = 'Starlit Night';
-  }
+  // 1B. Day/night cycle (src/sim/celestialCycle.ts)
+  state.celestialTime = advanceCelestialTime(state.celestialTime, dt, state.celestialSpeed);
+  const sky = celestialState(state.celestialTime);
+  const skyLight = celestialLighting(sky);
+  const {
+    isMoon,
+    elevationY: celestialElevationY,
+    lateralX: celestialLateralX,
+    bodyOpacity,
+    phaseLabel,
+  } = sky;
+  const { golden: goldenWeight, day: dayWeight, twilight: twilightWeight, night: nightWeight } = sky.weights;
 
   const skyPhaseEl = document.getElementById('time-phase-label');
   if (skyPhaseEl && skyPhaseEl.textContent !== phaseLabel) {
@@ -1765,7 +1603,7 @@ function animate() {
     liveColors.sunColor.copy(baseBiomeColors.sunColor).lerp(celestialColors.daySun, dayWeight * 0.65);
   }
 
-  const darkFactor = nightWeight * 0.72 + twilightWeight * 0.42;
+  const { darkFactor } = skyLight;
   liveColors.terrainColor.copy(baseBiomeColors.terrainColor).lerp(celestialColors.nightTerrain, darkFactor);
   liveColors.mountainColor
     .copy(baseBiomeColors.mountainColor)
@@ -1779,28 +1617,22 @@ function animate() {
   skyUniforms.uMidColor.value.copy(liveColors.skyMid);
   skyUniforms.uHorizonColor.value.copy(liveColors.skyHorizon);
   skyUniforms.uSunColor.value.copy(liveColors.sunColor);
-  skyUniforms.uNightFactor.value = nightWeight + twilightWeight * 0.5;
-  skyUniforms.uCelestialDir.value
-    .set(celestialLateralX / 1050.0, celestialElevationY / 1050.0, -1.0)
-    .normalize();
+  skyUniforms.uNightFactor.value = skyLight.nightFactor;
+  skyUniforms.uCelestialDir.value.fromArray(skyLight.celestialDir);
 
   sunUniforms.uSunColor.value.copy(liveColors.sunColor);
   sunUniforms.uHorizonColor.value.copy(liveColors.skyHorizon);
   sunUniforms.uIsMoon.value = isMoon;
   sunUniforms.uOpacity.value = bodyOpacity;
 
-  // Twinkle & fade stars: lush and bright at night/twilight, soft during golden hour, hidden in bright day
-  starMat.opacity = Math.max(
-    0.08,
-    Math.min(0.95, nightWeight * 0.95 + twilightWeight * 0.68 + goldenWeight * 0.22 - dayWeight * 0.35),
-  );
+  starMat.opacity = skyLight.starOpacity;
 
   scene.fog.color.copy(liveColors.fogColor);
   dirLight.color.copy(liveColors.sunColor);
-  dirLight.intensity = isMoon > 0.5 ? 0.55 + nightWeight * 0.35 : 1.15 + sinArc * 0.95;
+  dirLight.intensity = skyLight.sunIntensity;
   hemiLight.color.copy(liveColors.skyHorizon);
   hemiLight.groundColor.copy(liveColors.terrainColor);
-  hemiLight.intensity = 0.48 + (1.0 - darkFactor) * 0.35;
+  hemiLight.intensity = skyLight.hemiIntensity;
   carFillLight.color.copy(liveColors.skyHorizon);
 
   skyUniforms.uTime.value = elapsed;
@@ -1860,20 +1692,20 @@ function animate() {
   state.lateralOffset = Math.max(-6.2, Math.min(6.2, state.lateralOffset));
 
   // 4. Position & Orient Grand Tourer Car on the Curving 3D Road
-  const roadX = getRoadX(state.zPos);
-  const roadY = getRoadY(state.zPos);
+  const carRoadX = roadX(state.zPos);
+  const carRoadY = roadY(state.zPos);
   const lookAheadZ = state.zPos - 8.0;
-  const nextRoadX = getRoadX(lookAheadZ);
-  const nextRoadY = getRoadY(lookAheadZ);
+  const nextRoadX = roadX(lookAheadZ);
+  const nextRoadY = roadY(lookAheadZ);
 
-  const carWorldX = roadX + state.lateralOffset;
-  const carWorldY = roadY + 0.05;
+  const carWorldX = carRoadX + state.lateralOffset;
+  const carWorldY = carRoadY + 0.05;
   carGroup.position.set(carWorldX, carWorldY, state.zPos);
   carFillLight.position.set(carWorldX, carWorldY + 2.2, state.zPos - 1.0);
 
   // Compute smooth tangent heading & pitch
   const dx = nextRoadX + state.lateralOffset + state.lateralVelocity * 0.22 - carWorldX;
-  const dy = nextRoadY - roadY;
+  const dy = nextRoadY - carRoadY;
   const dz = lookAheadZ - state.zPos;
 
   const yawAngle = Math.atan2(-dx, -dz);
@@ -1917,8 +1749,8 @@ function animate() {
     const hoodZ = state.zPos - Math.cos(yawAngle) * 0.6;
     camera.position.set(hoodX, carWorldY + 1.38, hoodZ);
 
-    const farX = getRoadX(state.zPos - 45) + state.lateralOffset * 0.5 + Math.sin(state.cameraDragYaw) * 20;
-    const farY = getRoadY(state.zPos - 45) + 1.35 - state.cameraDragPitch * 12;
+    const farX = roadX(state.zPos - 45) + state.lateralOffset * 0.5 + Math.sin(state.cameraDragYaw) * 20;
+    const farY = roadY(state.zPos - 45) + 1.35 - state.cameraDragPitch * 12;
     camera.lookAt(farX, farY, state.zPos - 45);
     carGroup.visible = true;
   } else {
@@ -1936,9 +1768,9 @@ function animate() {
   starField.position.set(carWorldX, carWorldY * 0.5, state.zPos);
   starField.rotation.y = elapsed * 0.008;
   horizonSun.position.set(
-    carWorldX + getRoadDerivativeX(state.zPos) * 95 + celestialLateralX,
+    carWorldX + roadDerivativeX(state.zPos) * 95 + celestialLateralX,
     carWorldY + celestialElevationY,
-    state.zPos - 1050,
+    state.zPos - CELESTIAL_DISTANCE,
   );
   dirLight.position.set(
     carWorldX + celestialLateralX * 0.5,
@@ -1951,7 +1783,7 @@ function animate() {
   updateScenery(state.zPos);
 
   // 8. Update Dashboard HUD, Landform Readout & Radio Equalizer
-  const currentLandform = getLandformBlend(state.zPos).activeName;
+  const currentLandform = landformBlend(state.zPos).activeName;
   const landformEl = document.getElementById('landform-label');
   if (landformEl && landformEl.textContent !== currentLandform) {
     landformEl.textContent = currentLandform;

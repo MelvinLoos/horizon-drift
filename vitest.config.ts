@@ -15,7 +15,14 @@ export default defineConfig({
       // Pure modules must stay ≥ 90 % covered (docs/refactor-plan.md). Add new pure folders here.
       thresholds: {
         'src/config/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
-        'src/world/colors.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+        'src/core/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
+        'src/sim/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
+        'src/world/{colors,noise,road,landforms}.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

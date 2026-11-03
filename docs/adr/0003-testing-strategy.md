@@ -13,7 +13,10 @@ The refactor must keep the experience the same while the code is rewritten modul
    `legacy/index.html` with a seeded `Math.random` and a paused fake clock, and records:
    pure-function outputs (road, noise, landforms, terrain elevation) and per-frame traces of logic
    that only existed inline (day/night cycle, driving physics). Extracted modules must reproduce
-   these JSON files (`tests/fixtures/legacy/`).
+   these JSON files (`tests/fixtures/legacy/`) within a relative tolerance of 1e-9
+   (`ORACLE_TOLERANCE`). Bit-exact equality is not achievable: the fixtures come from Chromium and
+   the unit tests run in Node, whose V8 builds use different trig routines (Chrome enables
+   `use_libm_trig_functions`), so `Math.sin` can differ by 1 ulp, which the noise hash amplifies.
 2. **Shared visual baselines.** `tests/e2e/visual.spec.ts` screenshots fixed scenes
    (5 biomes, 3 cameras, 4 sky phases). The baselines were captured from the legacy page and are
    shared by every target (`TARGET=legacy|app`) via a common `window.__HD__` hook contract.
