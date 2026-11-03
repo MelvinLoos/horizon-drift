@@ -10,261 +10,22 @@ import skyFragmentShader from './world/sky/sky.frag.glsl?raw';
 import bodyVertexShader from './world/sky/celestial-body.vert.glsl?raw';
 import bodyFragmentShader from './world/sky/celestial-body.frag.glsl?raw';
 import { installTestHooks } from './testing/testHooks';
+import { BIOMES as BIOME_CONFIG } from './config/biomes';
+import { CAMERA_MODES } from './config/cameras';
+import { CELESTIAL_PALETTE } from './config/celestial';
+import { LANDFORM_TYPES, ZONE_LENGTH } from './config/landforms';
+import { ARRANGEMENT_PHASES, RADIO_STATIONS } from './config/stations';
+import { HALF_WIDTH, SCENERY_COUNT, SEGMENT_LEN, TOTAL_LENGTH, X_SEGMENTS, Z_SEGMENTS } from './config/world';
+import { paletteToColors, withThreeColors } from './world/colors';
 
 /********************************************************************
  * 1. BIOME & HORIZON DEFINITIONS
  ********************************************************************/
-const BIOMES = [
-  {
-    name: 'Outrun Sunset',
-    dotColor: '#f43f5e',
-    skyTop: new THREE.Color(0x090418),
-    skyMid: new THREE.Color(0x3b1245),
-    skyHorizon: new THREE.Color(0xff5a36),
-    fogColor: new THREE.Color(0x4a1936),
-    sunColor: new THREE.Color(0xffb74d),
-    terrainColor: new THREE.Color(0x160d1e),
-    mountainColor: new THREE.Color(0x281533),
-    peakColor: new THREE.Color(0x6e3554),
-    gridColor: new THREE.Color(0xff4d6d),
-    roadStripeColor: new THREE.Color(0xffca3a),
-    sceneryType: 'palms',
-    sunElevation: 0.14,
-  },
-  {
-    name: 'Desert Golden Hour',
-    dotColor: '#f59e0b',
-    skyTop: new THREE.Color(0x142238),
-    skyMid: new THREE.Color(0x8c4223),
-    skyHorizon: new THREE.Color(0xffaa4c),
-    fogColor: new THREE.Color(0x733a20),
-    sunColor: new THREE.Color(0xffe082),
-    terrainColor: new THREE.Color(0x331b11),
-    mountainColor: new THREE.Color(0x5c2c18),
-    peakColor: new THREE.Color(0x9e5231),
-    gridColor: new THREE.Color(0xf59e0b),
-    roadStripeColor: new THREE.Color(0xfbbf24),
-    sceneryType: 'cacti',
-    sunElevation: 0.18,
-  },
-  {
-    name: 'Alpine Starlight',
-    dotColor: '#38bdf8',
-    skyTop: new THREE.Color(0x020612),
-    skyMid: new THREE.Color(0x0b192c),
-    skyHorizon: new THREE.Color(0x1e3f66),
-    fogColor: new THREE.Color(0x0f233d),
-    sunColor: new THREE.Color(0xe0f2fe),
-    terrainColor: new THREE.Color(0x0a1320),
-    mountainColor: new THREE.Color(0x192b42),
-    peakColor: new THREE.Color(0xcbd5e1),
-    gridColor: new THREE.Color(0x38bdf8),
-    roadStripeColor: new THREE.Color(0xf1f5f9),
-    sceneryType: 'pines',
-    sunElevation: 0.22,
-  },
-  {
-    name: 'Coastal Breeze',
-    dotColor: '#2dd4bf',
-    skyTop: new THREE.Color(0x083d66),
-    skyMid: new THREE.Color(0x2b8cbe),
-    skyHorizon: new THREE.Color(0xffe8a3),
-    fogColor: new THREE.Color(0x6baed6),
-    sunColor: new THREE.Color(0xfffbeb),
-    terrainColor: new THREE.Color(0x13332f),
-    mountainColor: new THREE.Color(0x1f524c),
-    peakColor: new THREE.Color(0x648c85),
-    gridColor: new THREE.Color(0x2dd4bf),
-    roadStripeColor: new THREE.Color(0xffffff),
-    sceneryType: 'palms',
-    sunElevation: 0.3,
-  },
-  {
-    name: 'Aurora Borealis',
-    dotColor: '#34d399',
-    skyTop: new THREE.Color(0x020813),
-    skyMid: new THREE.Color(0x062c36),
-    skyHorizon: new THREE.Color(0x10b981),
-    fogColor: new THREE.Color(0x082a33),
-    sunColor: new THREE.Color(0xa7f3d0),
-    terrainColor: new THREE.Color(0x06151c),
-    mountainColor: new THREE.Color(0x0f2f38),
-    peakColor: new THREE.Color(0x88b3ba),
-    gridColor: new THREE.Color(0x10b981),
-    roadStripeColor: new THREE.Color(0x6ee7b7),
-    sceneryType: 'pines',
-    sunElevation: 0.16,
-  },
-];
+const BIOMES = BIOME_CONFIG.map(withThreeColors);
 
 /********************************************************************
  * 2. MULTI-CHANNEL PROCEDURAL SYNTH RADIO ENGINE (Tone.js)
  ********************************************************************/
-const RADIO_STATIONS = [
-  {
-    freq: '88.5 FM',
-    name: 'Nightcall Synthwave',
-    genre: 'Generative Analog Arps & FM Solo',
-    bpm: 106,
-    color: '#f43f5e',
-    style: 'synthwave',
-    scale: ['A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5', 'A5'],
-    progressions: [
-      [
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'A3', 'C4', 'E4'] },
-        { root: 'F1', fifth: 'C2', octave: 'F2', notes: ['F2', 'C3', 'A3', 'C4', 'E4'] },
-        { root: 'C2', fifth: 'G2', octave: 'C3', notes: ['C3', 'G3', 'B3', 'E4', 'G4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'B3', 'D4', 'G4'] },
-      ],
-      [
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'A3', 'C4', 'F4', 'A4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'C4', 'E4', 'A4'] },
-        { root: 'F1', fifth: 'C2', octave: 'F2', notes: ['F2', 'C3', 'A3', 'E4', 'G4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G3', 'B3', 'E4'] },
-      ],
-      [
-        { root: 'F1', fifth: 'C2', octave: 'F2', notes: ['F2', 'C3', 'A3', 'C4', 'F4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'B3', 'D4', 'G4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G3', 'D4', 'F#4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'B3', 'C4', 'E4'] },
-      ],
-    ],
-  },
-  {
-    freq: '94.2 FM',
-    name: 'Canyon Lo-Fi Chill',
-    genre: 'Evolving Neo-Soul Rhodes & Vinyl Jazz',
-    bpm: 80,
-    color: '#f59e0b',
-    style: 'lofi',
-    scale: ['D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'C5', 'D5', 'E5'],
-    progressions: [
-      [
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'F3', 'A3', 'C4', 'E4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'F3', 'A3', 'B3', 'E4'] },
-        { root: 'C2', fifth: 'G2', octave: 'C3', notes: ['C3', 'E3', 'G3', 'B3', 'D4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'G3', 'B3', 'C#4', 'F4'] },
-      ],
-      [
-        { root: 'F1', fifth: 'C2', octave: 'F2', notes: ['F2', 'E3', 'A3', 'C4', 'D4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'D3', 'G#3', 'B3', 'D4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'C3', 'G3', 'B3', 'E4'] },
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'F3', 'A3', 'C4', 'F4'] },
-      ],
-      [
-        { root: 'B1', fifth: 'F2', octave: 'B2', notes: ['B2', 'D3', 'F3', 'A3', 'D4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'D3', 'G3', 'B3', 'C#4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'G3', 'C4', 'E4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'F3', 'B3', 'D4'] },
-      ],
-    ],
-  },
-  {
-    freq: '101.7 FM',
-    name: 'Cosmic Horizon Ambient',
-    genre: 'Drifting Lydian Shimmer & Starlight',
-    bpm: 66,
-    color: '#38bdf8',
-    style: 'ambient',
-    scale: [
-      'E3',
-      'F#3',
-      'G#3',
-      'B3',
-      'C#4',
-      'D#4',
-      'E4',
-      'F#4',
-      'G#4',
-      'B4',
-      'C#5',
-      'D#5',
-      'E5',
-      'G#5',
-      'B5',
-    ],
-    progressions: [
-      [
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'F#3', 'G#3', 'D#4'] },
-        { root: 'C#2', fifth: 'G#2', octave: 'C#3', notes: ['C#3', 'G#3', 'B3', 'E4', 'F#4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'B3', 'C#4', 'G#4'] },
-        { root: 'B1', fifth: 'F#2', octave: 'B2', notes: ['B2', 'F#3', 'B3', 'D#4', 'F#4'] },
-      ],
-      [
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'G#3', 'B3', 'D#4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G#3', 'B3', 'F#4'] },
-        { root: 'F#1', fifth: 'C#2', octave: 'F#2', notes: ['F#2', 'C#3', 'A3', 'C#4', 'E4'] },
-        { root: 'B1', fifth: 'F#2', octave: 'B2', notes: ['B2', 'F#3', 'A3', 'C#4', 'F#4'] },
-      ],
-      [
-        { root: 'C#2', fifth: 'G#2', octave: 'C#3', notes: ['C#3', 'G#3', 'E4', 'F#4', 'B4'] },
-        { root: 'G#1', fifth: 'D#2', octave: 'G#2', notes: ['G#2', 'D#3', 'B3', 'D#4', 'F#4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'C#4', 'E4', 'G#4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'F#3', 'B3', 'E4'] },
-      ],
-    ],
-  },
-  {
-    freq: '105.3 FM',
-    name: 'Desert Americana',
-    genre: 'Fingerpicked Open-Tuning & Slide Lead',
-    bpm: 94,
-    color: '#34d399',
-    style: 'americana',
-    scale: ['G3', 'A3', 'B3', 'D4', 'E4', 'F#4', 'G4', 'A4', 'B4', 'D5', 'E5', 'F#5', 'G5', 'A5', 'B5'],
-    progressions: [
-      [
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'G3', 'B3', 'D4'] },
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'A3', 'D4', 'F#4', 'A4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G3', 'B3', 'E4'] },
-        { root: 'C2', fifth: 'G2', octave: 'C3', notes: ['C3', 'G3', 'C4', 'E4', 'G4'] },
-      ],
-      [
-        { root: 'C2', fifth: 'G2', octave: 'C3', notes: ['C3', 'G3', 'D4', 'E4', 'G4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'A3', 'B3', 'D4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'A3', 'C4', 'E4'] },
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'A3', 'C4', 'F#4', 'A4'] },
-      ],
-      [
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G3', 'D4', 'E4'] },
-        { root: 'C2', fifth: 'G2', octave: 'C3', notes: ['C3', 'G3', 'B3', 'D4', 'G4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'G3', 'B3', 'D4'] },
-        { root: 'D2', fifth: 'A2', octave: 'D3', notes: ['D3', 'A3', 'D4', 'F#4', 'G4'] },
-      ],
-    ],
-  },
-  {
-    freq: '108.9 FM',
-    name: 'Autobahn Cyber-Pulse',
-    genre: 'Evolving Polyrhythms & Acid Sequence',
-    bpm: 122,
-    color: '#a855f7',
-    style: 'cyber',
-    scale: ['F#3', 'G#3', 'A3', 'B3', 'C#4', 'D4', 'E4', 'F#4', 'G#4', 'A4', 'B4', 'C#5', 'E5', 'F#5', 'A5'],
-    progressions: [
-      [
-        { root: 'F#1', fifth: 'C#2', octave: 'F#2', notes: ['F#2', 'C#3', 'A3', 'C#4', 'E4'] },
-        { root: 'D1', fifth: 'A1', octave: 'D2', notes: ['D2', 'A2', 'F#3', 'A3', 'C#4'] },
-        { root: 'B1', fifth: 'F#2', octave: 'B2', notes: ['B2', 'F#3', 'A3', 'D4', 'F#4'] },
-        { root: 'C#1', fifth: 'G#1', octave: 'C#2', notes: ['C#2', 'G#2', 'F3', 'B3', 'C#4'] },
-      ],
-      [
-        { root: 'D1', fifth: 'A1', octave: 'D2', notes: ['D2', 'A2', 'F#3', 'B3', 'E4'] },
-        { root: 'E1', fifth: 'B1', octave: 'E2', notes: ['E2', 'B2', 'G#3', 'B3', 'E4'] },
-        { root: 'F#1', fifth: 'C#2', octave: 'F#2', notes: ['F#2', 'C#3', 'A3', 'C#4', 'F#4'] },
-        { root: 'A1', fifth: 'E2', octave: 'A2', notes: ['A2', 'E3', 'A3', 'C#4', 'E4'] },
-      ],
-      [
-        { root: 'B1', fifth: 'F#2', octave: 'B2', notes: ['B2', 'F#3', 'A3', 'C#4', 'F#4'] },
-        { root: 'F#1', fifth: 'C#2', octave: 'F#2', notes: ['F#2', 'C#3', 'A3', 'C#4', 'E4'] },
-        { root: 'G1', fifth: 'D2', octave: 'G2', notes: ['G2', 'D3', 'B3', 'D4', 'F#4'] },
-        { root: 'C#1', fifth: 'G#1', octave: 'C#2', notes: ['C#2', 'G#2', 'F3', 'G#3', 'C#4'] },
-      ],
-    ],
-  },
-];
-
-const ARRANGEMENT_PHASES = ['INTRO', 'CRUISE', 'PEAK', 'SOLO', 'BREAKDOWN', 'CRUISE', 'SOLO', 'PEAK'];
 
 class CarRadio {
   constructor() {
@@ -757,22 +518,8 @@ const carFillLight = new THREE.PointLight(0xff8c42, 0.65, 14);
 scene.add(carFillLight);
 
 // High-Resolution Endless Curving Road & Mountain Valley Mesh Dimensions
-const Z_SEGMENTS = 230;
-const X_SEGMENTS = 76;
-const SEGMENT_LEN = 5.5;
-const TOTAL_LENGTH = Z_SEGMENTS * SEGMENT_LEN;
-const HALF_WIDTH = 520;
 
 // Endless Geomorphology & Landform Progression along Z
-const LANDFORM_TYPES = [
-  { name: 'Alpine Peaks', id: 'mountains' },
-  { name: 'Rolling Foothills', id: 'hills' },
-  { name: 'Grand Canyon Gorge', id: 'canyon' },
-  { name: 'Sweeping Prairie Plains', id: 'plains' },
-  { name: 'Red-Rock Mesas & Plateaus', id: 'mesas' },
-  { name: 'Sunken River Valley', id: 'valley' },
-];
-const ZONE_LENGTH = 900.0; // Every 900 meters the earthly landform smoothly morphs
 
 function getLandformBlend(z) {
   const dist = Math.abs(z);
@@ -1034,7 +781,6 @@ terrainMesh.frustumCulled = false;
 scene.add(terrainMesh);
 
 // Detailed Roadside Scenery Pool (Multi-tier Pines, Curved Palms, Saguaro Cacti, Highway Reflector Posts)
-const SCENERY_COUNT = 96;
 const sceneryObjects = [];
 const sceneryGroup = new THREE.Group();
 scene.add(sceneryGroup);
@@ -1554,8 +1300,6 @@ const state = {
   isDraggingCamera: false,
 };
 
-const CAMERA_MODES = ['Chase Cam', 'Bonnet View', 'Cinema Drone'];
-
 // Base Biome Colors (before Day-Night atmospheric modulation)
 const baseBiomeColors = {
   skyTop: BIOMES[0].skyTop.clone(),
@@ -1585,22 +1329,7 @@ const liveColors = {
 };
 
 // Celestial Palette Anchors for Day, Golden Sunset/Sunrise, Twilight, and Moonlit Night
-const CELESTIAL_PALETTES = {
-  daySkyTop: new THREE.Color(0x0c3c78),
-  daySkyMid: new THREE.Color(0x3882c2),
-  dayHorizon: new THREE.Color(0xffe4a0),
-  daySun: new THREE.Color(0xfffbeb),
-  twilightTop: new THREE.Color(0x050517),
-  twilightMid: new THREE.Color(0x25123e),
-  twilightHorizon: new THREE.Color(0xc83e5b),
-  nightTop: new THREE.Color(0x02040a),
-  nightMid: new THREE.Color(0x071124),
-  nightHorizon: new THREE.Color(0x122747),
-  moonColor: new THREE.Color(0xbfdbfe),
-  nightTerrain: new THREE.Color(0x050912),
-  nightMountain: new THREE.Color(0x0d192b),
-  nightPeak: new THREE.Color(0x64748b),
-};
+const CELESTIAL_PALETTES = paletteToColors(CELESTIAL_PALETTE);
 
 function blendWeightedColors(target, c1, w1, c2, w2, c3, w3, c4, w4) {
   return target.setRGB(
