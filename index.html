@@ -246,16 +246,16 @@
           <div class="flex flex-col gap-1.5">
             <button
               id="btn-cruise"
-              class="px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-emerald-500/20 border-emerald-400/50 text-emerald-300"
+              class="hud-toggle"
+              data-tone="emerald"
+              data-state="on"
+              aria-pressed="true"
             >
-              <span id="cruise-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              CRUISE: ON
+              <span class="hud-toggle-dot" aria-hidden="true"></span>
+              <span id="cruise-label">CRUISE: ON</span>
             </button>
-            <button
-              id="btn-autosteer"
-              class="px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-sky-500/20 border-sky-400/50 text-sky-300"
-            >
-              <span>LANE ASSIST: ON</span>
+            <button id="btn-autosteer" class="hud-toggle" data-tone="sky" data-state="on" aria-pressed="true">
+              <span id="autosteer-label">LANE ASSIST: ON</span>
             </button>
           </div>
         </div>
@@ -360,10 +360,7 @@
     </div>
 
     <!-- Subtle Toast Notification for Station / Biome Switch -->
-    <div
-      id="toast-banner"
-      class="fixed top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none opacity-0 transition-all duration-500 transform -translate-y-2"
-    >
+    <div id="toast-banner" class="toast" data-visible="false" role="status" aria-live="polite">
       <div
         class="glass-panel px-5 py-2 rounded-full text-xs font-mono-tech tracking-wider text-sky-200 border border-sky-400/30 shadow-lg"
       >
