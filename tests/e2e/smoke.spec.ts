@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { framesRendered, openApp } from './support/driver';
+import { framesRendered, openApp, stepFrames } from './support/driver';
 
 /** Collects uncaught exceptions and console errors for the lifetime of the page. */
 function trackErrors(page: Page): string[] {
@@ -64,6 +64,19 @@ test.describe('smoke', () => {
 
     await page.locator('#btn-autosteer').click();
     await expect(page.locator('#btn-autosteer')).toHaveText('LANE ASSIST: OFF');
+  });
+});
+
+test.describe('test hooks', () => {
+  test('stepping frames leaves exactly one render loop running', async ({ page }) => {
+    await openApp(page, { deterministic: true });
+    const start = await framesRendered(page); // the app also counts its initial onload frame
+    await stepFrames(page, 30);
+    expect(await framesRendered(page)).toBe(start + 1); // only the last stepped frame is drawn
+    await page.clock.runFor(100); // ≈ 6 frames of the app's own rAF loop
+    const rendered = (await framesRendered(page)) - start - 1;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThanOrEqual(7); // 30 leaked loops would render ~180
   });
 });
 
