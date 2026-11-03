@@ -20,10 +20,10 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test --grep-invert @visual",
     "fixtures:legacy": "tsx scripts/capture-legacy-fixtures.ts",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:e2e && pnpm test:visual",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build && pnpm test:e2e && pnpm test:visual",
     "prepare": "husky",
     "test:visual": "scripts/playwright-docker.sh --grep @visual",
-    "test:visual:update": "scripts/playwright-docker.sh --grep @visual --update-snapshots"
+    "test:visual:update": "scripts/playwright-docker.sh --grep @visual --project=legacy --update-snapshots"
   },
   "lint-staged": {
     "*.{ts,js}": [

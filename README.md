@@ -23,7 +23,7 @@ with a generative Tone.js synth radio.
 | `pnpm test`                                          | Unit tests (Vitest)                                                            |
 | `pnpm test:e2e`                                      | Smoke + known-bug e2e tests against the built app and the prototype            |
 | `pnpm test:visual`                                   | Visual regression tests in the Playwright Docker image                         |
-| `pnpm test:visual:update`                            | Re-generate visual baselines (only in a dedicated commit)                      |
+| `pnpm test:visual:update`                            | Re-generate visual baselines from the legacy oracle (dedicated commit only)    |
 | `pnpm fixtures:legacy`                               | Re-capture oracle fixtures from the legacy prototype                           |
 | `pnpm verify`                                        | Everything CI runs                                                             |
 

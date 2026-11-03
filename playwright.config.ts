@@ -5,6 +5,7 @@ const isCI = !!process.env.CI;
 export default defineConfig({
   testDir: 'tests/e2e',
   // Baselines are shared by every target (legacy prototype and the app): parity is the point.
+  // They are only ever written from the `legacy` project (see `test:visual:update`).
   snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   fullyParallel: true,
   forbidOnly: isCI,
@@ -41,7 +42,9 @@ export default defineConfig({
   webServer: {
     command: 'npx vite build --mode e2e --logLevel warn && npx vite preview --port 4173 --strictPort',
     url: 'http://localhost:4173/legacy/index.html',
-    reuseExistingServer: !isCI,
+    // Always build fresh: a reused server could be a stale bundle or a production preview
+    // (`pnpm preview`, same port) without the test hooks.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
