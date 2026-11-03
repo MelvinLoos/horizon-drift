@@ -90,7 +90,6 @@
     animation: pulse-slow 3s infinite ease-in-out;
   }
 
-  /* Equalizer bars */
   /* Cruise / lane-assist style toggles: state comes from data-state, tone from data-tone. */
   .hud-toggle {
     @apply flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] font-semibold tracking-wider transition;
@@ -107,8 +106,11 @@
 
   .hud-toggle-dot {
     @apply h-2 w-2 rounded-full bg-slate-500;
-    [data-state='on'] > & {
+    [data-state='on'][data-tone='emerald'] > & {
       @apply animate-ping bg-emerald-400;
+    }
+    [data-state='on'][data-tone='sky'] > & {
+      @apply bg-sky-400;
     }
   }
   .toast {
@@ -130,6 +132,7 @@
     }
   }
 
+  /* Equalizer bars */
   .eq-bar {
     transition: height 0.08s ease-out;
   }

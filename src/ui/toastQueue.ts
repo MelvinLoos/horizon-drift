@@ -2,6 +2,8 @@
 export interface Scheduler {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
+  /** Monotonic milliseconds. */
+  now(): number;
 }
 
 export interface ToastView {
@@ -29,6 +31,7 @@ export class ToastQueue {
   private readonly queue: string[] = [];
   private current: string | null = null;
   private timer: unknown = null;
+  private shownAt = 0;
 
   constructor(
     private readonly view: ToastView,
@@ -37,19 +40,29 @@ export class ToastQueue {
   ) {}
 
   push(message: string): void {
-    if (message === this.current || this.queue.includes(message)) return;
+    if (message === this.current) {
+      // The same action again: keep its feedback on screen for a full hold from now.
+      this.restartTimer(this.queue.length > 0 ? this.timing.busyHoldMs : this.timing.holdMs);
+      return;
+    }
+    if (this.queue.includes(message)) return;
     if (this.current === null) {
       this.display(message);
       return;
     }
+    const wasIdle = this.queue.length === 0;
     this.queue.push(message);
     while (this.queue.length > this.timing.maxQueued) this.queue.shift();
-    // Something is waiting now: shorten the current message's remaining time.
-    this.restartTimer(this.timing.busyHoldMs);
+    if (wasIdle) {
+      // Something is waiting now: cap the current message at busyHoldMs *since it appeared*.
+      const elapsed = this.scheduler.now() - this.shownAt;
+      this.restartTimer(Math.max(0, this.timing.busyHoldMs - elapsed));
+    }
   }
 
   private display(message: string): void {
     this.current = message;
+    this.shownAt = this.scheduler.now();
     this.view.show(message);
     this.restartTimer(this.queue.length > 0 ? this.timing.busyHoldMs : this.timing.holdMs);
   }

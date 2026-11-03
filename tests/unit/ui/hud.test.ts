@@ -30,13 +30,12 @@ const IDS = [
   'odometer-val',
 ];
 
-const noTimers: Scheduler = { setTimeout: () => 0, clearTimeout: () => undefined };
+const noTimers: Scheduler = { setTimeout: () => 0, clearTimeout: () => undefined, now: () => 0 };
 const el = requireEl;
 
 describe('HUD', () => {
   beforeEach(() => {
     document.body.replaceChildren();
-    delete document.body.dataset.zen;
     for (const id of IDS) {
       const node = document.createElement('div');
       node.id = id;
@@ -68,9 +67,27 @@ describe('HUD', () => {
     const { store } = createHud(noTimers);
     store.set({ zen: true });
     expect(el('bottom-hud').inert).toBe(true);
-    expect(document.body.dataset.zen).toBe('true');
     store.set({ zen: false });
     expect(el('bottom-hud').inert).toBe(false);
+  });
+
+  it('moves focus out of the dashboard before making it inert', () => {
+    const { store } = createHud(noTimers);
+    const button = document.createElement('button');
+    el('bottom-hud').append(button);
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    store.set({ zen: true });
+    expect(document.activeElement).not.toBe(button);
+  });
+
+  it('only re-renders the sections whose state changed', () => {
+    const { store } = createHud(noTimers);
+    el('cruise-label').textContent = 'tampered';
+    store.set({ speedText: '99' }); // must not touch the cruise section
+    expect(el('cruise-label').textContent).toBe('tampered');
+    store.set({ cruiseControl: false });
+    expect(el('cruise-label').textContent).toBe('CRUISE: OFF');
   });
 
   it('updates readouts and the biome dot', () => {

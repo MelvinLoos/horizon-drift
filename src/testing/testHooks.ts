@@ -112,11 +112,15 @@ export function installTestHooks({
       state.currentBiomeIdx = i;
       state.targetBiomeIdx = i;
       state.biomeLerp = 1;
-      el('current-biome-label').textContent = biome.name;
-      const dot = el('biome-indicator-dot');
-      dot.style.backgroundColor = biome.dotColor;
-      dot.style.boxShadow = `0 0 10px ${biome.dotColor}`;
-      setHud?.({ biomeName: biome.name, biomeDotColor: biome.dotColor });
+      if (setHud) {
+        setHud({ biomeName: biome.name, biomeDotColor: biome.dotColor });
+      } else {
+        // The legacy page has no HUD store: write its DOM directly.
+        el('current-biome-label').textContent = biome.name;
+        const dot = el('biome-indicator-dot');
+        dot.style.backgroundColor = biome.dotColor;
+        dot.style.boxShadow = `0 0 10px ${biome.dotColor}`;
+      }
     },
 
     setSkyTime(p, frozen) {
@@ -126,8 +130,8 @@ export function installTestHooks({
 
     setCamera(i) {
       state.cameraMode = i;
-      el('camera-label').textContent = CAMERA_MODES[i] ?? '';
-      setHud?.({ cameraLabel: CAMERA_MODES[i] ?? '' });
+      if (setHud) setHud({ cameraLabel: CAMERA_MODES[i] ?? '' });
+      else el('camera-label').textContent = CAMERA_MODES[i] ?? '';
     },
 
     hideIgnitionOverlay() {

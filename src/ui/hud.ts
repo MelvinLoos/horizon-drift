@@ -55,7 +55,15 @@ export interface Hud {
  * Binds the HUD markup to a store. State is expressed as `data-*` attributes and `inert`; all
  * styling is in CSS (src/styles/main.css), not in class strings built here.
  */
-export function createHud(scheduler: Scheduler = window): Hud {
+const WINDOW_SCHEDULER: Scheduler = {
+  setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimeout: (handle) => {
+    window.clearTimeout(handle as number);
+  },
+  now: () => performance.now(),
+};
+
+export function createHud(scheduler: Scheduler = WINDOW_SCHEDULER): Hud {
   const store = createStore<HudState>({ ...INITIAL_HUD });
   const toasts = new ToastQueue(new DomToast(requireEl('toast-banner'), requireEl('toast-text')), scheduler);
 
@@ -77,22 +85,31 @@ export function createHud(scheduler: Scheduler = window): Hud {
     if (el.textContent !== text) el.textContent = text; // avoids per-frame DOM writes
   };
 
-  const render = (s: HudState): void => {
-    cruise.dataset.state = s.cruiseControl ? 'on' : 'off';
-    cruise.setAttribute('aria-pressed', String(s.cruiseControl));
-    setText(cruiseLabel, s.cruiseControl ? 'CRUISE: ON' : 'CRUISE: OFF');
-    assist.dataset.state = s.laneAssist ? 'on' : 'off';
-    assist.setAttribute('aria-pressed', String(s.laneAssist));
-    setText(assistLabel, s.laneAssist ? 'LANE ASSIST: ON' : 'LANE ASSIST: OFF');
+  // Only the fields that changed are written: the per-frame readouts must not re-run the rest.
+  const render = (s: HudState, prev?: HudState): void => {
+    const changed = (...keys: (keyof HudState)[]): boolean => !prev || keys.some((k) => s[k] !== prev[k]);
 
-    // Zen mode hides the dashboard. `inert` also removes it from pointer, focus and a11y trees,
-    // which the old pointer-events assignment failed to do (BUG-002).
-    document.body.dataset.zen = String(s.zen);
-    bottomHud.inert = s.zen;
-
-    setText(biomeLabel, s.biomeName);
-    biomeDot.style.backgroundColor = s.biomeDotColor;
-    biomeDot.style.boxShadow = `0 0 10px ${s.biomeDotColor}`;
+    if (changed('cruiseControl')) {
+      cruise.dataset.state = s.cruiseControl ? 'on' : 'off';
+      cruise.setAttribute('aria-pressed', String(s.cruiseControl));
+      setText(cruiseLabel, s.cruiseControl ? 'CRUISE: ON' : 'CRUISE: OFF');
+    }
+    if (changed('laneAssist')) {
+      assist.dataset.state = s.laneAssist ? 'on' : 'off';
+      assist.setAttribute('aria-pressed', String(s.laneAssist));
+      setText(assistLabel, s.laneAssist ? 'LANE ASSIST: ON' : 'LANE ASSIST: OFF');
+    }
+    if (changed('zen')) {
+      // `inert` removes the hidden dashboard from pointer, focus and a11y trees, which the old
+      // pointer-events assignment failed to do (BUG-002). Move focus out first so it isn't lost.
+      if (s.zen && bottomHud.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+      bottomHud.inert = s.zen;
+    }
+    if (changed('biomeName', 'biomeDotColor')) {
+      setText(biomeLabel, s.biomeName);
+      biomeDot.style.backgroundColor = s.biomeDotColor;
+      biomeDot.style.boxShadow = `0 0 10px ${s.biomeDotColor}`;
+    }
     setText(cameraLabel, s.cameraLabel);
     setText(landform, s.landform);
     setText(skyPhase, s.skyPhase);

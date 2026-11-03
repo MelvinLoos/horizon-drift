@@ -504,6 +504,13 @@ class CarRadio {
   }
 }
 
+const hud = createHud();
+function showToast(message) {
+  hud.toast(message);
+}
+// Start from the real landform so the first frame doesn't announce one.
+hud.store.set({ landform: landformBlend(0).activeName });
+
 const radio = new CarRadio();
 
 /********************************************************************
@@ -1352,9 +1359,6 @@ function updateScenery(playerZ) {
 /********************************************************************
  * 5. INPUT LISTENERS & UI HOOKS
  ********************************************************************/
-const hud = createHud();
-const showToast = (message) => hud.toast(message);
-
 const input = new InputController(
   {
     onCommand(command) {
@@ -1494,8 +1498,6 @@ function animate() {
     phaseLabel,
   } = sky;
   const { golden: goldenWeight, day: dayWeight, twilight: twilightWeight, night: nightWeight } = sky.weights;
-
-  hud.store.set({ skyPhase: phaseLabel });
 
   // Compose live sky, fog, sun/moon, and terrain colors from weights
   blendWeightedColors(
@@ -1723,14 +1725,15 @@ function animate() {
 
   // 8. Update Dashboard HUD, Landform Readout & Radio Equalizer
   const currentLandform = landformBlend(state.zPos).activeName;
-  if (hud.store.get().landform !== currentLandform) {
-    hud.store.set({ landform: currentLandform });
-    showToast(`ENTERING • ${currentLandform.toUpperCase()}`);
-  }
+  const landformChanged = hud.store.get().landform !== currentLandform;
+  if (landformChanged) showToast(`ENTERING • ${currentLandform.toUpperCase()}`);
 
   const roundedSpeed = Math.round(state.speedKmh);
   const gear = roundedSpeed === 0 ? 'P' : 'D' + Math.min(6, Math.max(1, Math.ceil(roundedSpeed / 32)));
+  // One store update per frame for everything that changes continuously.
   hud.store.set({
+    skyPhase: phaseLabel,
+    landform: currentLandform,
     speedText: String(roundedSpeed),
     odometerText: state.distanceKm.toFixed(1),
     gearText: `GEAR ${gear}`,
