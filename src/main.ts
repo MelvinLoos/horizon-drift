@@ -517,10 +517,6 @@ scene.add(dirLight);
 const carFillLight = new THREE.PointLight(0xff8c42, 0.65, 14);
 scene.add(carFillLight);
 
-// High-Resolution Endless Curving Road & Mountain Valley Mesh Dimensions
-
-// Endless Geomorphology & Landform Progression along Z
-
 function getLandformBlend(z) {
   const dist = Math.abs(z);
   const rawZone = dist / ZONE_LENGTH;
@@ -1301,35 +1297,13 @@ const state = {
 };
 
 // Base Biome Colors (before Day-Night atmospheric modulation)
-const baseBiomeColors = {
-  skyTop: BIOMES[0].skyTop.clone(),
-  skyMid: BIOMES[0].skyMid.clone(),
-  skyHorizon: BIOMES[0].skyHorizon.clone(),
-  fogColor: BIOMES[0].fogColor.clone(),
-  sunColor: BIOMES[0].sunColor.clone(),
-  terrainColor: BIOMES[0].terrainColor.clone(),
-  mountainColor: BIOMES[0].mountainColor.clone(),
-  peakColor: BIOMES[0].peakColor.clone(),
-  gridColor: BIOMES[0].gridColor.clone(),
-  roadStripeColor: BIOMES[0].roadStripeColor.clone(),
-};
+const baseBiomeColors = paletteToColors(BIOME_CONFIG[0].palette);
 
 // Dynamic Colors for smooth Biome + Day/Night transitions
-const liveColors = {
-  skyTop: BIOMES[0].skyTop.clone(),
-  skyMid: BIOMES[0].skyMid.clone(),
-  skyHorizon: BIOMES[0].skyHorizon.clone(),
-  fogColor: BIOMES[0].fogColor.clone(),
-  sunColor: BIOMES[0].sunColor.clone(),
-  terrainColor: BIOMES[0].terrainColor.clone(),
-  mountainColor: BIOMES[0].mountainColor.clone(),
-  peakColor: BIOMES[0].peakColor.clone(),
-  gridColor: BIOMES[0].gridColor.clone(),
-  roadStripeColor: BIOMES[0].roadStripeColor.clone(),
-};
+const liveColors = paletteToColors(BIOME_CONFIG[0].palette);
 
 // Celestial Palette Anchors for Day, Golden Sunset/Sunrise, Twilight, and Moonlit Night
-const CELESTIAL_PALETTES = paletteToColors(CELESTIAL_PALETTE);
+const celestialColors = paletteToColors(CELESTIAL_PALETTE);
 
 function blendWeightedColors(target, c1, w1, c2, w2, c3, w3, c4, w4) {
   return target.setRGB(
@@ -1751,11 +1725,11 @@ function animate() {
     liveColors.skyTop,
     baseBiomeColors.skyTop,
     goldenWeight,
-    CELESTIAL_PALETTES.daySkyTop,
+    celestialColors.daySkyTop,
     dayWeight,
-    CELESTIAL_PALETTES.twilightTop,
+    celestialColors.twilightTop,
     twilightWeight,
-    CELESTIAL_PALETTES.nightTop,
+    celestialColors.nightTop,
     nightWeight,
   );
 
@@ -1763,11 +1737,11 @@ function animate() {
     liveColors.skyMid,
     baseBiomeColors.skyMid,
     goldenWeight,
-    CELESTIAL_PALETTES.daySkyMid,
+    celestialColors.daySkyMid,
     dayWeight,
-    CELESTIAL_PALETTES.twilightMid,
+    celestialColors.twilightMid,
     twilightWeight,
-    CELESTIAL_PALETTES.nightMid,
+    celestialColors.nightMid,
     nightWeight,
   );
 
@@ -1775,30 +1749,28 @@ function animate() {
     liveColors.skyHorizon,
     baseBiomeColors.skyHorizon,
     goldenWeight,
-    CELESTIAL_PALETTES.dayHorizon,
+    celestialColors.dayHorizon,
     dayWeight,
-    CELESTIAL_PALETTES.twilightHorizon,
+    celestialColors.twilightHorizon,
     twilightWeight,
-    CELESTIAL_PALETTES.nightHorizon,
+    celestialColors.nightHorizon,
     nightWeight,
   );
 
   liveColors.fogColor.copy(liveColors.skyHorizon).lerp(liveColors.skyMid, 0.38);
 
   if (isMoon > 0.5) {
-    liveColors.sunColor.copy(CELESTIAL_PALETTES.moonColor);
+    liveColors.sunColor.copy(celestialColors.moonColor);
   } else {
-    liveColors.sunColor.copy(baseBiomeColors.sunColor).lerp(CELESTIAL_PALETTES.daySun, dayWeight * 0.65);
+    liveColors.sunColor.copy(baseBiomeColors.sunColor).lerp(celestialColors.daySun, dayWeight * 0.65);
   }
 
   const darkFactor = nightWeight * 0.72 + twilightWeight * 0.42;
-  liveColors.terrainColor
-    .copy(baseBiomeColors.terrainColor)
-    .lerp(CELESTIAL_PALETTES.nightTerrain, darkFactor);
+  liveColors.terrainColor.copy(baseBiomeColors.terrainColor).lerp(celestialColors.nightTerrain, darkFactor);
   liveColors.mountainColor
     .copy(baseBiomeColors.mountainColor)
-    .lerp(CELESTIAL_PALETTES.nightMountain, darkFactor);
-  liveColors.peakColor.copy(baseBiomeColors.peakColor).lerp(CELESTIAL_PALETTES.nightPeak, darkFactor * 0.65);
+    .lerp(celestialColors.nightMountain, darkFactor);
+  liveColors.peakColor.copy(baseBiomeColors.peakColor).lerp(celestialColors.nightPeak, darkFactor * 0.65);
   liveColors.gridColor.copy(baseBiomeColors.gridColor);
   liveColors.roadStripeColor.copy(baseBiomeColors.roadStripeColor);
 
