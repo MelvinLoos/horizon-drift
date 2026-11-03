@@ -8,7 +8,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // main.ts is the @ts-nocheck legacy script until step 2.9; it is covered by e2e tests.
+      // Covered by e2e tests instead: main.ts (the @ts-nocheck legacy script until step 2.9) and the
+      // test hooks, which only run in a browser.
       exclude: ['src/main.ts', 'src/testing/**'],
       reporter: ['text', 'html', 'lcov'],
       // Pure modules must stay ≥ 90 % covered (docs/refactor-plan.md). Add new pure folders here.

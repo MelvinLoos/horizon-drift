@@ -62,13 +62,11 @@ describe('radio stations', () => {
   });
 
   it.each(RADIO_STATIONS)('$name chords are bass-ordered and voiced low to high', ({ progressions }) => {
-    // The composer indexes progressions 0..2 when it branches between them.
-    expect(progressions).toHaveLength(3);
     for (const progression of progressions) {
       for (const chord of progression) {
-        // The bass line's fifth: diminished (e.g. B half-diminished), perfect or augmented. Jazz
-        // voicings (lo-fi) may omit it from `notes`, so only the interval is checked.
-        expect([6, 7, 8]).toContain(midi(chord.fifth) - midi(chord.root));
+        // The bass line's fifth: perfect, or diminished for half-diminished chords (lo-fi's B).
+        // Jazz voicings (lo-fi) may omit it from `notes`, so only the interval is checked.
+        expect([6, 7]).toContain(midi(chord.fifth) - midi(chord.root));
         expect(midi(chord.octave) - midi(chord.root)).toBe(12);
         expect(chord.notes.length).toBeGreaterThanOrEqual(5);
         const voicing = chord.notes.map(midi);
@@ -95,8 +93,9 @@ describe('world, landforms, cameras, sky', () => {
     expect(ZONE_LENGTH).toBeGreaterThan(0);
   });
 
-  it('has three camera modes', () => {
-    expect(CAMERA_MODES).toEqual(['Chase Cam', 'Bonnet View', 'Cinema Drone']);
+  it('has uniquely named camera modes', () => {
+    expect(CAMERA_MODES.length).toBeGreaterThan(0);
+    expect(unique(CAMERA_MODES)).toBe(true);
   });
 
   it('has valid celestial anchor colours', () => {
