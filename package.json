@@ -1,0 +1,53 @@
+{
+  "name": "horizon-drift",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "An endless, tranquil retrowave road trip with a generative synth radio.",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --grep-invert @visual",
+    "fixtures:legacy": "tsx scripts/capture-legacy-fixtures.ts",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:e2e && pnpm test:visual",
+    "prepare": "husky",
+    "test:visual": "scripts/playwright-docker.sh --grep @visual",
+    "test:visual:update": "scripts/playwright-docker.sh --grep @visual --update-snapshots"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "eslint --max-warnings 0 --no-warn-ignored --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css,html}": "prettier --write --ignore-unknown"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}

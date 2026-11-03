@@ -1,0 +1,9 @@
+legacy/
+.agents/
+skills-lock.json
+pnpm-lock.yaml
+dist/
+coverage/
+playwright-report/
+test-results/
+tests/fixtures/
