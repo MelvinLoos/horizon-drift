@@ -90,6 +90,48 @@
     animation: pulse-slow 3s infinite ease-in-out;
   }
 
+  /* Cruise / lane-assist style toggles: state comes from data-state, tone from data-tone. */
+  .hud-toggle {
+    @apply flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] font-semibold tracking-wider transition;
+    font-family: 'JetBrains Mono', monospace;
+    @apply border-white/15 bg-white/5 text-slate-400;
+
+    &[data-state='on'][data-tone='emerald'] {
+      @apply border-emerald-400/50 bg-emerald-500/20 text-emerald-300;
+    }
+    &[data-state='on'][data-tone='sky'] {
+      @apply border-sky-400/50 bg-sky-500/20 text-sky-300;
+    }
+  }
+
+  .hud-toggle-dot {
+    @apply h-2 w-2 rounded-full bg-slate-500;
+    [data-state='on'][data-tone='emerald'] > & {
+      @apply animate-ping bg-emerald-400;
+    }
+    [data-state='on'][data-tone='sky'] > & {
+      @apply bg-sky-400;
+    }
+  }
+  .toast {
+    @apply pointer-events-none fixed top-20 left-1/2 z-30 transition-all duration-500;
+    transform: translate(-50%, -8px);
+    opacity: 0;
+
+    &[data-visible='true'] {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+  }
+
+  /* Zen mode: dashboard fades out; the element is also `inert` (see ui/hud.ts). */
+  #bottom-hud {
+    transition: opacity 0.5s;
+    &[inert] {
+      opacity: 0;
+    }
+  }
+
   /* Equalizer bars */
   .eq-bar {
     transition: height 0.08s ease-out;

@@ -11,6 +11,14 @@ import bodyVertexShader from './world/sky/celestial-body.vert.glsl?raw';
 import bodyFragmentShader from './world/sky/celestial-body.frag.glsl?raw';
 import { InputController } from './input/InputController';
 import { requireEl } from './ui/dom';
+import { createHud } from './ui/hud';
+import {
+  cruiseMessage,
+  engineStartMessage,
+  headlightsMessage,
+  laneAssistMessage,
+  zenMessage,
+} from './ui/messages';
 import { installTestHooks } from './testing/testHooks';
 import { BIOMES as BIOME_CONFIG } from './config/biomes';
 import { CAMERA_MODES } from './config/cameras';
@@ -495,6 +503,13 @@ class CarRadio {
     });
   }
 }
+
+const hud = createHud();
+function showToast(message) {
+  hud.toast(message);
+}
+// Start from the real landform so the first frame doesn't announce one.
+hud.store.set({ landform: landformBlend(0).activeName });
 
 const radio = new CarRadio();
 
@@ -1209,10 +1224,7 @@ function cycleBiome() {
   state.biomeLerp = 0;
 
   const b = BIOMES[state.targetBiomeIdx];
-  document.getElementById('current-biome-label').textContent = b.name;
-  const dot = document.getElementById('biome-indicator-dot');
-  dot.style.backgroundColor = b.dotColor;
-  dot.style.boxShadow = `0 0 10px ${b.dotColor}`;
+  hud.store.set({ biomeName: b.name, biomeDotColor: b.dotColor });
   showToast(`HORIZON SHIFT • ${b.name.toUpperCase()}`);
 }
 
@@ -1390,10 +1402,10 @@ const input = new InputController(
 // UI Button Listeners
 document.getElementById('start-journey-btn').addEventListener('click', async () => {
   await radio.init();
-  const overlay = document.getElementById('ignition-overlay');
+  const overlay = requireEl('ignition-overlay');
   overlay.style.opacity = '0';
   setTimeout(() => (overlay.style.display = 'none'), 700);
-  showToast('ENGINE STARTED • 88.5 FM NIGHTCALL SYNTHWAVE');
+  showToast(engineStartMessage(RADIO_STATIONS[radio.stationIndex]));
 });
 
 document.getElementById('btn-biome').addEventListener('click', cycleBiome);
@@ -1413,44 +1425,19 @@ function toggleCruiseControl() {
   if (state.cruiseControl) {
     state.cruiseSpeedKmh = Math.max(80, Math.round(state.speedKmh));
   }
-  updateCruiseUI();
-  showToast(
-    state.cruiseControl ? `CRUISE CONTROL SET AT ${state.cruiseSpeedKmh} KM/H` : 'CRUISE CONTROL OFF',
-  );
-}
-
-function updateCruiseUI() {
-  const btn = document.getElementById('btn-cruise');
-  if (state.cruiseControl) {
-    btn.className =
-      'px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-emerald-500/20 border-emerald-400/50 text-emerald-300';
-    btn.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> CRUISE: ON`;
-  } else {
-    btn.className =
-      'px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-white/5 border-white/15 text-slate-400';
-    btn.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-500"></span> CRUISE: OFF`;
-  }
+  hud.store.set({ cruiseControl: state.cruiseControl });
+  showToast(cruiseMessage(state.cruiseControl, state.cruiseSpeedKmh));
 }
 
 function toggleLaneAssist() {
   state.laneAssist = !state.laneAssist;
-  const btn = document.getElementById('btn-autosteer');
-  if (state.laneAssist) {
-    btn.className =
-      'px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-sky-500/20 border-sky-400/50 text-sky-300';
-    btn.textContent = 'LANE ASSIST: ON';
-    showToast('COMFORT LANE ASSIST ENABLED');
-  } else {
-    btn.className =
-      'px-3 py-1 rounded-xl text-[11px] font-mono-tech font-semibold tracking-wider border transition flex items-center gap-1.5 cursor-pointer bg-white/5 border-white/15 text-slate-400';
-    btn.textContent = 'LANE ASSIST: OFF';
-    showToast('MANUAL STEERING MODE');
-  }
+  hud.store.set({ laneAssist: state.laneAssist });
+  showToast(laneAssistMessage(state.laneAssist));
 }
 
 function cycleCamera() {
   state.cameraMode = (state.cameraMode + 1) % CAMERA_MODES.length;
-  document.getElementById('camera-label').textContent = CAMERA_MODES[state.cameraMode];
+  hud.store.set({ cameraLabel: CAMERA_MODES[state.cameraMode] });
   showToast(`VIEW • ${CAMERA_MODES[state.cameraMode].toUpperCase()}`);
 }
 
@@ -1463,28 +1450,13 @@ function toggleHeadlights() {
   popUpHeadlights.forEach((pod) => {
     pod.rotation.x = state.headlightsOn ? 0 : -0.42;
   });
-  showToast(state.headlightsOn ? 'POP-UP HEADLIGHTS UP' : 'POP-UP HEADLIGHTS RETRACTED');
+  showToast(headlightsMessage(state.headlightsOn));
 }
 
 function toggleZenMode() {
   state.zenMode = !state.zenMode;
-  const bottomHud = document.getElementById('bottom-hud');
-  bottomHud.style.opacity = state.zenMode ? '0' : '1';
-  bottomHud.style.pointerEvents = state.zenMode ? 'none' : 'none';
-  showToast(state.zenMode ? 'ZEN HORIZON VIEW (PRESS H TO RESTORE)' : 'DASHBOARD RESTORED');
-}
-
-let toastTimer = null;
-function showToast(msg) {
-  const banner = document.getElementById('toast-banner');
-  document.getElementById('toast-text').textContent = msg;
-  banner.style.opacity = '1';
-  banner.style.transform = 'translate(-50%, 0)';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    banner.style.opacity = '0';
-    banner.style.transform = 'translate(-50%, -8px)';
-  }, 2600);
+  hud.store.set({ zen: state.zenMode });
+  showToast(zenMessage(state.zenMode));
 }
 
 window.addEventListener('resize', () => {
@@ -1526,11 +1498,6 @@ function animate() {
     phaseLabel,
   } = sky;
   const { golden: goldenWeight, day: dayWeight, twilight: twilightWeight, night: nightWeight } = sky.weights;
-
-  const skyPhaseEl = document.getElementById('time-phase-label');
-  if (skyPhaseEl && skyPhaseEl.textContent !== phaseLabel) {
-    skyPhaseEl.textContent = phaseLabel;
-  }
 
   // Compose live sky, fog, sun/moon, and terrain colors from weights
   blendWeightedColors(
@@ -1758,17 +1725,19 @@ function animate() {
 
   // 8. Update Dashboard HUD, Landform Readout & Radio Equalizer
   const currentLandform = landformBlend(state.zPos).activeName;
-  const landformEl = document.getElementById('landform-label');
-  if (landformEl && landformEl.textContent !== currentLandform) {
-    landformEl.textContent = currentLandform;
-    showToast(`ENTERING • ${currentLandform.toUpperCase()}`);
-  }
+  const landformChanged = hud.store.get().landform !== currentLandform;
+  if (landformChanged) showToast(`ENTERING • ${currentLandform.toUpperCase()}`);
 
   const roundedSpeed = Math.round(state.speedKmh);
-  document.getElementById('speed-display').textContent = roundedSpeed;
-  document.getElementById('odometer-val').textContent = state.distanceKm.toFixed(1);
   const gear = roundedSpeed === 0 ? 'P' : 'D' + Math.min(6, Math.max(1, Math.ceil(roundedSpeed / 32)));
-  document.getElementById('gear-display').textContent = `GEAR ${gear}`;
+  // One store update per frame for everything that changes continuously.
+  hud.store.set({
+    skyPhase: phaseLabel,
+    landform: currentLandform,
+    speedText: String(roundedSpeed),
+    odometerText: state.distanceKm.toFixed(1),
+    gearText: `GEAR ${gear}`,
+  });
 
   radio.updateDrivingDynamics(state.speedKmh);
   radio.updateVisualizer(elapsed);
@@ -1782,5 +1751,13 @@ window.onload = function () {
 
 // Test-only hooks (window.__HD__) for e2e and visual tests; stripped from production builds.
 if (import.meta.env.MODE !== 'production') {
-  installTestHooks({ state, BIOMES, CAMERA_MODES, renderer, clock, animate });
+  installTestHooks({
+    state,
+    BIOMES,
+    CAMERA_MODES,
+    renderer,
+    clock,
+    animate,
+    setHud: (patch) => hud.store.set(patch),
+  });
 }

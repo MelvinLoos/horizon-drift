@@ -11,6 +11,13 @@ function trackErrors(page: Page): string[] {
   return errors;
 }
 
+/** The legacy page fades the dashboard with inline style; the app also makes it `inert`. */
+async function expectDashboardHidden(page: Page): Promise<void> {
+  const hud = page.locator('#bottom-hud');
+  if (currentTarget() === 'legacy') await expect(hud).toHaveAttribute('style', /opacity: 0/);
+  else await expect(hud).toHaveAttribute('inert', '');
+}
+
 async function startEngine(page: Page): Promise<void> {
   await page.getByRole('button', { name: /start engine/i }).click();
   await expect(page.locator('#ignition-overlay')).toBeHidden({ timeout: 10_000 });
@@ -50,7 +57,7 @@ test.describe('smoke', () => {
     await expect(page.locator('#station-name')).toHaveText('Canyon Lo-Fi Chill');
 
     await page.keyboard.press('KeyH');
-    await expect(page.locator('#bottom-hud')).toHaveAttribute('style', /opacity: 0/);
+    await expectDashboardHidden(page);
   });
 
   test('dashboard buttons work with the mouse', async ({ page }) => {
@@ -94,12 +101,12 @@ test.describe('known bugs', () => {
     expect(errors).toEqual([]);
   });
 
-  test('BUG-002: hidden dashboard stays clickable in zen mode', async ({ page }) => {
-    test.fail();
+  test('BUG-002: hidden dashboard must not be clickable in zen mode', async ({ page }) => {
+    test.fail(currentTarget() === 'legacy', 'fixed in the app (2.4); the prototype keeps the bug');
     await openApp(page);
     await startEngine(page);
     await page.keyboard.press('KeyH');
-    await expect(page.locator('#bottom-hud')).toHaveAttribute('style', /opacity: 0/);
+    await expectDashboardHidden(page);
     await page.locator('#radio-next').click({ force: true });
     await expect(page.locator('#station-name')).toHaveText('Nightcall Synthwave');
   });
