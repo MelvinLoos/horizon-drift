@@ -124,6 +124,17 @@
     }
   }
 
+  .radio-power {
+    @apply cursor-pointer rounded-xl border p-2 transition;
+
+    &[data-state='on'] {
+      @apply border-emerald-400/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30;
+    }
+    &[data-state='muted'] {
+      @apply border-rose-400/40 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30;
+    }
+  }
+
   /* Zen mode: dashboard fades out; the element is also `inert` (see ui/hud.ts). */
   #bottom-hud {
     transition: opacity 0.5s;

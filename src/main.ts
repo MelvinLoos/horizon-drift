@@ -3,7 +3,6 @@
    step 2.9. */
 // @ts-nocheck -- same reason.
 import * as THREE from 'three';
-import * as Tone from 'tone';
 import './styles/main.css';
 import skyVertexShader from './world/sky/sky.vert.glsl?raw';
 import skyFragmentShader from './world/sky/sky.frag.glsl?raw';
@@ -12,6 +11,7 @@ import bodyFragmentShader from './world/sky/celestial-body.frag.glsl?raw';
 import { InputController } from './input/InputController';
 import { requireEl } from './ui/dom';
 import { createHud } from './ui/hud';
+import { bindRadioConsole } from './ui/radioConsole';
 import {
   cruiseMessage,
   engineStartMessage,
@@ -23,7 +23,8 @@ import { installTestHooks } from './testing/testHooks';
 import { BIOMES as BIOME_CONFIG } from './config/biomes';
 import { CAMERA_MODES } from './config/cameras';
 import { CELESTIAL_PALETTE } from './config/celestial';
-import { ARRANGEMENT_PHASES, RADIO_STATIONS } from './config/stations';
+import { RADIO_STATIONS } from './config/stations';
+import { Radio } from './audio/Radio';
 import { HALF_WIDTH, SCENERY_COUNT, SEGMENT_LEN, TOTAL_LENGTH, X_SEGMENTS, Z_SEGMENTS } from './config/world';
 import { paletteToColors, withThreeColors } from './world/colors';
 import { landformBlend, terrainElevation } from './world/landforms';
@@ -42,468 +43,6 @@ import {
  ********************************************************************/
 const BIOMES = BIOME_CONFIG.map(withThreeColors);
 
-/********************************************************************
- * 2. MULTI-CHANNEL PROCEDURAL SYNTH RADIO ENGINE (Tone.js)
- ********************************************************************/
-
-class CarRadio {
-  constructor() {
-    this.isInitialized = false;
-    this.isPlaying = false;
-    this.stationIndex = 0;
-    this.step = 0;
-    this.barCount = 0;
-    this.eqBars = document.querySelectorAll('.eq-bar');
-
-    // Non-looping generative state
-    this.progressionIdx = 0;
-    this.chordIdx = 0;
-    this.phaseIdx = 1; // Start in CRUISE
-    this.barsInCurrentPhase = 0;
-    this.phaseTargetBars = 8;
-    this.arpDirection = 1;
-    this.arpWalkIdx = 0;
-    this.melodyDegree = 7;
-    this.euclidRotation = 0;
-    this.speedMod = 0.5;
-  }
-
-  async init() {
-    if (this.isInitialized) return;
-    await Tone.start();
-
-    // Master Bus with Glue Compression & Stereo Space
-    this.compressor = new Tone.Compressor({ threshold: -18, ratio: 3.5, attack: 0.02, release: 0.25 });
-    this.masterVol = new Tone.Volume(-6).toDestination();
-    this.compressor.connect(this.masterVol);
-
-    this.reverb = new Tone.Reverb({ decay: 4.8, wet: 0.42 }).connect(this.compressor);
-    this.delay = new Tone.PingPongDelay({ delayTime: '8n.', feedback: 0.34, wet: 0.32 }).connect(this.reverb);
-    this.chorus = new Tone.Chorus(2.2, 3.5, 0.4).connect(this.reverb).start();
-
-    // Slow LFO breathing on the pad filter so timbre never stays static
-    this.padFilter = new Tone.Filter(1400, 'lowpass').connect(this.chorus);
-    this.filterLFO = new Tone.LFO('0.07hz', 650, 2400).start();
-    this.filterLFO.connect(this.padFilter.frequency);
-
-    // 1. Lush Evolving Pad PolySynth
-    this.padSynth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'fatsawtooth', count: 3, spread: 26 },
-      envelope: { attack: 1.1, decay: 1.8, sustain: 0.72, release: 3.2 },
-    }).connect(this.padFilter);
-    this.padSynth.volume.value = -13;
-
-    // 2. Dynamic Filter Bass MonoSynth
-    this.bassSynth = new Tone.MonoSynth({
-      oscillator: { type: 'fatsawtooth', count: 2, spread: 12 },
-      filter: { Q: 2.8, type: 'lowpass', rolloff: -24 },
-      envelope: { attack: 0.008, decay: 0.24, sustain: 0.25, release: 0.35 },
-      filterEnvelope: { attack: 0.01, decay: 0.18, sustain: 0.15, baseFrequency: 65, octaves: 2.6 },
-    }).connect(this.compressor);
-    this.bassSynth.volume.value = -7;
-
-    // 3. Generative Arpeggio / Pluck Synth
-    this.arpFilter = new Tone.Filter(2600, 'lowpass').connect(this.delay);
-    this.arpSynth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.006, decay: 0.32, sustain: 0.06, release: 0.55 },
-    }).connect(this.arpFilter);
-    this.arpSynth.volume.value = -10;
-
-    // 4. Expressive Improvisational FM Lead Synth (with portamento glide)
-    this.leadSynth = new Tone.MonoSynth({
-      portamento: 0.06,
-      oscillator: { type: 'fmsawtooth', modulationType: 'sine', modulationIndex: 2.5, harmonicity: 1 },
-      filter: { Q: 1.8, type: 'lowpass', rolloff: -12 },
-      envelope: { attack: 0.03, decay: 0.45, sustain: 0.4, release: 0.9 },
-      filterEnvelope: { attack: 0.04, decay: 0.35, sustain: 0.3, baseFrequency: 320, octaves: 3.2 },
-    }).connect(this.delay);
-    this.leadSynth.volume.value = -10;
-
-    // 5. Full Drum Kit (Kick, Snare/Rim, Open/Closed Hat)
-    this.kickSynth = new Tone.MembraneSynth({
-      pitchDecay: 0.045,
-      octaves: 5.5,
-      envelope: { attack: 0.001, decay: 0.32, sustain: 0, release: 0.3 },
-    }).connect(this.compressor);
-    this.kickSynth.volume.value = -8;
-
-    this.snareSynth = new Tone.NoiseSynth({
-      noise: { type: 'pink' },
-      envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.08 },
-    });
-    this.snareFilter = new Tone.Filter(1800, 'bandpass').connect(this.reverb);
-    this.snareSynth.connect(this.snareFilter);
-    this.snareSynth.volume.value = -14;
-
-    this.hatSynth = new Tone.NoiseSynth({
-      noise: { type: 'white' },
-      envelope: { attack: 0.001, decay: 0.045, sustain: 0 },
-    });
-    this.hatFilter = new Tone.Filter(7500, 'highpass').connect(this.compressor);
-    this.hatSynth.connect(this.hatFilter);
-    this.hatSynth.volume.value = -19;
-
-    // Radio static tuning sound
-    this.staticNoise = new Tone.NoiseSynth({
-      noise: { type: 'pink' },
-      envelope: { attack: 0.01, decay: 0.18, sustain: 0, release: 0.08 },
-    }).connect(this.masterVol);
-    this.staticNoise.volume.value = -16;
-
-    // Main 16th-note generative clock
-    this.loop = new Tone.Loop((time) => {
-      this.tickStep(time);
-    }, '16n').start(0);
-
-    this.applyStationSettings();
-    Tone.Transport.start();
-    this.isInitialized = true;
-    this.isPlaying = true;
-  }
-
-  getCurrentPhase() {
-    return ARRANGEMENT_PHASES[this.phaseIdx % ARRANGEMENT_PHASES.length];
-  }
-
-  // Advance bar, evolve arrangement phase, and pick non-repeating chord progressions
-  advanceBarState(st) {
-    this.barCount++;
-    this.barsInCurrentPhase++;
-
-    // Transition arrangement phase after target bar length (organic 4 to 10 bars)
-    if (this.barsInCurrentPhase >= this.phaseTargetBars) {
-      this.barsInCurrentPhase = 0;
-      // Weighted random jump to a new phase so structure never repeats identically
-      const nextOffset = Math.random() < 0.65 ? 1 : 2 + Math.floor(Math.random() * 2);
-      this.phaseIdx = (this.phaseIdx + nextOffset) % ARRANGEMENT_PHASES.length;
-      const phase = this.getCurrentPhase();
-      this.phaseTargetBars =
-        phase === 'BREAKDOWN' || phase === 'INTRO'
-          ? 4 + Math.floor(Math.random() * 3)
-          : 6 + Math.floor(Math.random() * 5);
-
-      // Shift arpeggiator & rhythmic rotation on phase change
-      this.arpDirection = Math.random() < 0.5 ? 1 : -1;
-      this.euclidRotation = Math.floor(Math.random() * 8);
-
-      const phaseBadge = document.getElementById('station-phase');
-      if (phaseBadge) phaseBadge.textContent = phase;
-    }
-
-    // Move to next chord in current progression, or Markov-branch to another progression
-    this.chordIdx++;
-    if (this.chordIdx >= 4) {
-      this.chordIdx = 0;
-      // 70% chance to switch to a different harmonic progression at end of 4-bar phrase
-      if (Math.random() < 0.7) {
-        const otherProgs = [0, 1, 2].filter((idx) => idx !== this.progressionIdx);
-        this.progressionIdx = otherProgs[Math.floor(Math.random() * otherProgs.length)];
-      }
-    } else if (Math.random() < 0.14) {
-      // Occasional mid-phrase harmonic substitution for surprise
-      this.progressionIdx = (this.progressionIdx + 1) % st.progressions.length;
-    }
-  }
-
-  // Generate dynamic chord voicing (inversions, open 9ths, octave drops)
-  buildDynamicVoicing(rawNotes, phase) {
-    const voiced = [...rawNotes];
-    // Randomly drop or raise individual chord tones by an octave for fresh voicings
-    if (Math.random() < 0.45 && voiced.length > 3) {
-      const idx = 1 + Math.floor(Math.random() * (voiced.length - 1));
-      voiced[idx] = Tone.Frequency(voiced[idx])
-        .transpose(Math.random() < 0.5 ? 12 : -12)
-        .toNote();
-    }
-    if (phase === 'BREAKDOWN' || phase === 'INTRO') {
-      // Sparse, airy voicing
-      return voiced.filter((_, i) => i !== 1);
-    }
-    if (phase === 'PEAK' || phase === 'SOLO') {
-      // Add shimmering top octave extension
-      const topNote = Tone.Frequency(voiced[voiced.length - 1])
-        .transpose(12)
-        .toNote();
-      voiced.push(topNote);
-    }
-    return voiced;
-  }
-
-  tickStep(time) {
-    if (!this.isPlaying) return;
-    try {
-      const st = RADIO_STATIONS[this.stationIndex];
-      const stepInBar = this.step % 16;
-
-      if (stepInBar === 0 && this.step > 0) {
-        this.advanceBarState(st);
-      }
-
-      const phase = this.getCurrentPhase();
-      const chordObj = st.progressions[this.progressionIdx][this.chordIdx];
-      const isFillBar = this.barsInCurrentPhase === this.phaseTargetBars - 1;
-
-      // Strictly non-negative humanize offset for polyphonic synths; exact `time` for MonoSynths
-      const humanJitter = Math.random() * 0.005;
-      const tPoly = time + humanJitter;
-      const tMono = time;
-      const velBase = 0.65 + this.speedMod * 0.25;
-
-      // ----------------------------------------------------
-      // 1. GENERATIVE PAD & HARMONIC SWELLS
-      // ----------------------------------------------------
-      if (stepInBar === 0) {
-        const voicing = this.buildDynamicVoicing(chordObj.notes, phase);
-        const dur = st.style === 'ambient' ? '1m' : '2n.';
-        const padVel = (phase === 'BREAKDOWN' ? 0.5 : 0.78) * (0.9 + Math.random() * 0.2);
-        this.padSynth.triggerAttackRelease(voicing, dur, tPoly, padVel);
-      } else if (stepInBar === 10 && st.style === 'lofi' && Math.random() < 0.55) {
-        // Neo-soul syncopated secondary chord stab
-        const stabVoicing = chordObj.notes.slice(1, 5);
-        this.padSynth.triggerAttackRelease(stabVoicing, '8n', tPoly, 0.45);
-      }
-
-      // ----------------------------------------------------
-      // 2. EVOLVING BASSLINES (Root / Fifth / Octave / Passing)
-      // ----------------------------------------------------
-      if (phase !== 'INTRO') {
-        if (st.style === 'synthwave' || st.style === 'cyber') {
-          const activeBass =
-            phase === 'BREAKDOWN'
-              ? stepInBar === 0 || stepInBar === 8
-              : stepInBar % 2 === 0 || (phase === 'PEAK' && stepInBar % 4 === 3);
-          if (activeBass) {
-            let bNote = chordObj.root;
-            const r = Math.random();
-            if (stepInBar === 14 && r < 0.65) bNote = chordObj.fifth;
-            else if (stepInBar % 4 === 2 && r < 0.55) bNote = chordObj.octave;
-            else if (r < 0.18) bNote = chordObj.fifth;
-
-            const bVel = (stepInBar % 4 === 0 ? 0.9 : 0.68) * (0.85 + Math.random() * 0.2);
-            this.bassSynth.triggerAttackRelease(bNote, '16n', tMono, bVel);
-          }
-        } else if (st.style === 'lofi' || st.style === 'americana') {
-          const isBeat =
-            stepInBar === 0 ||
-            stepInBar === 6 ||
-            stepInBar === 10 ||
-            (stepInBar === 14 && Math.random() < 0.5);
-          if (isBeat && !(phase === 'BREAKDOWN' && stepInBar > 0)) {
-            let bNote = chordObj.root;
-            if (stepInBar === 6 && Math.random() < 0.5) bNote = chordObj.fifth;
-            if (stepInBar === 10) bNote = Math.random() < 0.6 ? chordObj.fifth : chordObj.octave;
-            if (stepInBar === 14) bNote = st.scale[Math.floor(Math.random() * 5)];
-            this.bassSynth.triggerAttackRelease(bNote, '8n', tMono, 0.78);
-          }
-        } else if (st.style === 'ambient') {
-          if (stepInBar === 0 && (this.barCount % 2 === 0 || Math.random() < 0.4)) {
-            const bNote = Math.random() < 0.75 ? chordObj.root : chordObj.fifth;
-            this.bassSynth.triggerAttackRelease(bNote, '1m', tMono, 0.65);
-          }
-        }
-      }
-
-      // ----------------------------------------------------
-      // 3. NON-REPEATING ARPEGGIATOR & PLUCK PATTERNS
-      // ----------------------------------------------------
-      const arpChance = phase === 'PEAK' ? 0.88 : phase === 'CRUISE' ? 0.72 : phase === 'SOLO' ? 0.55 : 0.35;
-      const isArpStep =
-        st.style === 'synthwave' || st.style === 'cyber'
-          ? stepInBar % 2 === 0 || (phase === 'PEAK' && (stepInBar + this.euclidRotation) % 3 === 0)
-          : st.style === 'americana'
-            ? stepInBar % 2 === 0
-            : (stepInBar + this.euclidRotation) % 4 === 2;
-
-      if (isArpStep && Math.random() < arpChance) {
-        if (Math.random() < 0.25) {
-          this.arpDirection *= -1;
-        }
-        this.arpWalkIdx =
-          (this.arpWalkIdx + this.arpDirection + chordObj.notes.length) % chordObj.notes.length;
-        let note = chordObj.notes[this.arpWalkIdx];
-
-        if (Math.random() < 0.28) {
-          note = Tone.Frequency(note).transpose(12).toNote();
-        } else if (Math.random() < 0.2) {
-          note = st.scale[4 + Math.floor(Math.random() * (st.scale.length - 5))];
-        }
-
-        const arpDur = st.style === 'ambient' ? '2n' : '16n';
-        const arpVel = (0.5 + Math.random() * 0.38) * velBase;
-        this.arpSynth.triggerAttackRelease(note, arpDur, tPoly, arpVel);
-      }
-
-      // ----------------------------------------------------
-      // 4. IMPROVISATIONAL MARKOV LEAD SYNTH MELODY
-      // ----------------------------------------------------
-      const leadActive =
-        phase === 'SOLO' || phase === 'PEAK' || (phase === 'CRUISE' && this.barCount % 2 === 1);
-      if (leadActive) {
-        const isPhraseRest = stepInBar >= 11 && stepInBar <= 13 && Math.random() < 0.6;
-        const leadProb = phase === 'SOLO' ? 0.52 : phase === 'PEAK' ? 0.36 : 0.2;
-
-        if (!isPhraseRest && (stepInBar % 2 === 0 || Math.random() < 0.28) && Math.random() < leadProb) {
-          const intervals = [-2, -1, -1, 0, 1, 1, 2, 3, -3];
-          const delta = intervals[Math.floor(Math.random() * intervals.length)];
-          this.melodyDegree = Math.max(3, Math.min(st.scale.length - 1, this.melodyDegree + delta));
-
-          let leadNote = st.scale[this.melodyDegree];
-          if ((stepInBar === 0 || stepInBar === 8) && Math.random() < 0.65) {
-            const targetTone = chordObj.notes[2 + Math.floor(Math.random() * (chordObj.notes.length - 2))];
-            leadNote = Tone.Frequency(targetTone).transpose(12).toNote();
-          }
-
-          const durations = ['8n', '8n.', '4n', '16n'];
-          const dur = durations[Math.floor(Math.random() * durations.length)];
-          const leadVel = (0.58 + Math.random() * 0.32) * velBase;
-          this.leadSynth.triggerAttackRelease(leadNote, dur, tMono, leadVel);
-        }
-      }
-
-      // ----------------------------------------------------
-      // 5. DYNAMIC DRUMS, GHOST NOTES & BAR-END FILLS
-      // ----------------------------------------------------
-      if (st.style !== 'ambient' && phase !== 'INTRO' && phase !== 'BREAKDOWN') {
-        const mainKick =
-          st.style === 'cyber'
-            ? stepInBar % 4 === 0
-            : stepInBar === 0 ||
-              stepInBar === 8 ||
-              (stepInBar === 10 && st.style === 'lofi' && Math.random() < 0.6);
-        const ghostKick = (stepInBar === 7 || stepInBar === 15) && Math.random() < 0.25;
-
-        if (mainKick || ghostKick) {
-          this.kickSynth.triggerAttackRelease('C1', '8n', tMono, mainKick ? 0.92 : 0.55);
-        }
-
-        const mainSnare = stepInBar === 4 || stepInBar === 12;
-        const fillSnare = isFillBar && stepInBar >= 11 && Math.random() < 0.68;
-        const ghostSnare = (stepInBar === 7 || stepInBar === 9 || stepInBar === 15) && Math.random() < 0.18;
-
-        if (mainSnare || fillSnare || ghostSnare) {
-          const sVel = mainSnare ? 0.82 : fillSnare ? 0.65 + (stepInBar - 11) * 0.06 : 0.32;
-          this.snareSynth.triggerAttackRelease('16n', tMono, sVel);
-        }
-
-        const hatStep =
-          phase === 'PEAK' || st.style === 'cyber'
-            ? stepInBar % 2 === 0 || Math.random() < 0.35
-            : stepInBar % 2 === 0;
-        if (hatStep) {
-          const isOpenHat =
-            (stepInBar === 2 || stepInBar === 10 || (isFillBar && stepInBar === 14)) && Math.random() < 0.45;
-          this.hatSynth.envelope.decay = isOpenHat ? 0.14 : 0.035;
-          const hVel = (stepInBar % 4 === 2 ? 0.75 : 0.42) * (0.8 + Math.random() * 0.35);
-          this.hatSynth.triggerAttackRelease('32n', tMono + 0.001, hVel);
-        }
-      } else if (phase === 'BREAKDOWN' && st.style !== 'ambient') {
-        if (stepInBar === 0 && Math.random() < 0.7) {
-          this.kickSynth.triggerAttackRelease('C1', '8n', tMono, 0.5);
-        }
-        if (stepInBar === 12 && Math.random() < 0.5) {
-          this.hatSynth.envelope.decay = 0.09;
-          this.hatSynth.triggerAttackRelease('32n', tMono + 0.001, 0.35);
-        }
-      }
-
-      this.step++;
-    } catch (e) {
-      // Safely ignore any transient WebAudio timing overlaps
-      this.step++;
-    }
-  }
-
-  // Link driving speed & road energy directly to synthesizer filters and effects
-  updateDrivingDynamics(speedKmh) {
-    if (!this.isInitialized) return;
-    this.speedMod = Math.max(0, Math.min(1, speedKmh / 200));
-    const st = RADIO_STATIONS[this.stationIndex];
-
-    // Open up the arpeggiator filter and delay feedback as you drive faster
-    const baseCutoff = st.style === 'lofi' ? 1100 : st.style === 'ambient' ? 1800 : 1650;
-    const dynamicCutoff = baseCutoff + this.speedMod * 2400;
-    this.arpFilter.frequency.rampTo(dynamicCutoff, 0.25);
-  }
-
-  applyStationSettings() {
-    const st = RADIO_STATIONS[this.stationIndex];
-    Tone.Transport.bpm.rampTo(st.bpm, 0.6);
-    Tone.Transport.swing = st.style === 'lofi' ? 0.22 : st.style === 'americana' ? 0.08 : 0.02;
-    Tone.Transport.swingSubdivision = '16n';
-
-    if (st.style === 'ambient') {
-      this.reverb.wet.value = 0.68;
-      this.delay.wet.value = 0.45;
-      this.leadSynth.oscillator.modulationIndex.value = 1.4;
-    } else if (st.style === 'lofi') {
-      this.reverb.wet.value = 0.34;
-      this.delay.wet.value = 0.24;
-      this.leadSynth.oscillator.modulationIndex.value = 1.8;
-    } else if (st.style === 'cyber') {
-      this.reverb.wet.value = 0.38;
-      this.delay.wet.value = 0.36;
-      this.leadSynth.oscillator.modulationIndex.value = 4.2;
-    } else {
-      this.reverb.wet.value = 0.44;
-      this.delay.wet.value = 0.34;
-      this.leadSynth.oscillator.modulationIndex.value = 2.6;
-    }
-
-    // Update Radio UI
-    document.getElementById('station-freq').textContent = st.freq;
-    document.getElementById('station-name').textContent = st.name;
-    document.getElementById('station-genre').textContent = st.genre;
-    const phaseBadge = document.getElementById('station-phase');
-    if (phaseBadge) phaseBadge.textContent = this.getCurrentPhase();
-  }
-
-  changeStation(dir) {
-    this.stationIndex = (this.stationIndex + dir + RADIO_STATIONS.length) % RADIO_STATIONS.length;
-    this.progressionIdx = Math.floor(Math.random() * 3);
-    this.chordIdx = 0;
-    if (this.isInitialized && this.isPlaying) {
-      this.staticNoise.triggerAttackRelease('16n');
-    }
-    this.applyStationSettings();
-    const st = RADIO_STATIONS[this.stationIndex];
-    showToast(`RADIO TUNED • ${st.freq} — ${st.name.toUpperCase()}`);
-  }
-
-  togglePower() {
-    if (!this.isInitialized) return;
-    this.isPlaying = !this.isPlaying;
-    const btn = document.getElementById('radio-power');
-    if (this.isPlaying) {
-      btn.className =
-        'p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/30 transition cursor-pointer';
-      showToast('RADIO ON');
-    } else {
-      btn.className =
-        'p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-400/40 hover:bg-rose-500/30 transition cursor-pointer';
-      showToast('RADIO MUTED');
-    }
-  }
-
-  setVolume(db) {
-    if (!this.isInitialized) return;
-    this.masterVol.volume.value = parseFloat(db);
-  }
-
-  updateVisualizer(time) {
-    this.eqBars.forEach((bar, i) => {
-      if (!this.isPlaying) {
-        bar.style.height = '3px';
-        return;
-      }
-      const wave = Math.sin(time * 9 + i * 1.1) * 0.5 + 0.5;
-      const jitter = Math.cos(time * 15 - i * 0.7) * 0.3 + 0.3;
-      const h = Math.max(4, Math.min(26, Math.floor((wave * 0.65 + jitter * 0.35) * 26)));
-      bar.style.height = `${h}px`;
-    });
-  }
-}
-
 const hud = createHud();
 function showToast(message) {
   hud.toast(message);
@@ -511,7 +50,15 @@ function showToast(message) {
 // Start from the real landform so the first frame doesn't announce one.
 hud.store.set({ landform: landformBlend(0).activeName });
 
-const radio = new CarRadio();
+const radio = new Radio({
+  stations: RADIO_STATIONS,
+  rng: () => Math.random(),
+  notify: showToast,
+  onError: (error) => {
+    console.error('[radio]', error);
+  },
+});
+const radioConsole = bindRadioConsole(radio);
 
 /********************************************************************
  * 3. THREE.JS WORLD, CURVING ROAD, SKY DOME & GRAND TOURER CAR
@@ -1415,11 +962,6 @@ document.getElementById('btn-zen').addEventListener('click', toggleZenMode);
 document.getElementById('btn-cruise').addEventListener('click', toggleCruiseControl);
 document.getElementById('btn-autosteer').addEventListener('click', toggleLaneAssist);
 
-document.getElementById('radio-prev').addEventListener('click', () => radio.changeStation(-1));
-document.getElementById('radio-next').addEventListener('click', () => radio.changeStation(1));
-document.getElementById('radio-power').addEventListener('click', () => radio.togglePower());
-document.getElementById('radio-volume').addEventListener('input', (e) => radio.setVolume(e.target.value));
-
 function toggleCruiseControl() {
   state.cruiseControl = !state.cruiseControl;
   if (state.cruiseControl) {
@@ -1740,7 +1282,7 @@ function animate() {
   });
 
   radio.updateDrivingDynamics(state.speedKmh);
-  radio.updateVisualizer(elapsed);
+  radioConsole.updateVisualizer(elapsed);
 
   renderer.render(scene, camera);
 }

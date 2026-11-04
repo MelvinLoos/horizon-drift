@@ -268,6 +268,7 @@
             <!-- Prev Station -->
             <button
               id="radio-prev"
+              aria-label="Previous station"
               title="Previous Station"
               class="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/15 active:scale-95 flex items-center justify-center text-sky-300 transition cursor-pointer"
             >
@@ -290,7 +291,7 @@
               </div>
               <div class="flex items-center justify-between gap-2 mt-1">
                 <span id="station-genre" class="text-[11px] text-slate-400 truncate"
-                  >Warm Analog Arps &amp; Driving Bass</span
+                  >Generative Analog Arps &amp; FM Solo</span
                 >
                 <span
                   id="station-phase"
@@ -303,6 +304,7 @@
             <!-- Next Station -->
             <button
               id="radio-next"
+              aria-label="Next station"
               title="Next Station (R)"
               class="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/15 active:scale-95 flex items-center justify-center text-sky-300 transition cursor-pointer"
             >
@@ -333,7 +335,10 @@
               <button
                 id="radio-power"
                 title="Toggle Radio Mute"
-                class="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/30 transition cursor-pointer"
+                class="radio-power"
+                data-state="on"
+                aria-label="Mute radio"
+                aria-pressed="false"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -346,6 +351,7 @@
               </button>
               <input
                 id="radio-volume"
+                aria-label="Radio volume"
                 type="range"
                 min="-28"
                 max="0"
