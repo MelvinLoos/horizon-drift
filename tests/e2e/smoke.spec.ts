@@ -92,8 +92,8 @@ test.describe('test hooks', () => {
  * passes, Playwright reports it as unexpected, and the fix commit must remove the marker.
  */
 test.describe('known bugs', () => {
-  test('BUG-001: changing station before the engine starts throws', async ({ page }) => {
-    test.fail();
+  test('BUG-001: changing station before the engine starts must not throw', async ({ page }) => {
+    test.fail(currentTarget() === 'legacy', 'fixed in the app (2.5); the prototype keeps the bug');
     const errors = trackErrors(page);
     await openApp(page);
     await page.keyboard.press('KeyR');
