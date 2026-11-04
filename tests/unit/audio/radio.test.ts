@@ -166,6 +166,55 @@ describe('RadioEngine behaviour', () => {
     expect(engine.composer.step).toBe(stepBefore + 1);
   });
 
+  it('does not start twice when Start is clicked twice (one graph, one loop)', async () => {
+    const { radio } = makeRadio();
+    await Promise.all([radio.init(), radio.init()]);
+    expect(nodesOf('Loop')).toHaveLength(1);
+    expect(nodesOf('Volume')).toHaveLength(1);
+  });
+
+  it('starts silent when muted before Start (no blip)', async () => {
+    const { radio } = makeRadio();
+    radio.toggleMute();
+    await radio.init();
+    expect(nodesOf('Volume')[0]?.options).toBe(-70);
+  });
+
+  it('does not draw random numbers when tuning before Start', () => {
+    const rng = vi.fn(() => 0.5);
+    const radio = new Radio({ stations: RADIO_STATIONS, rng, notify: vi.fn(), onError: vi.fn() });
+    radio.changeStation(1);
+    radio.changeStation(1);
+    expect(rng).not.toHaveBeenCalled();
+  });
+
+  it('stops reporting after a few errors instead of flooding', async () => {
+    const { radio, onError } = makeRadio();
+    await radio.init();
+    const engine = (radio as unknown as { engine: { composer: { chordIdx: number } } }).engine;
+    for (let i = 0; i < 20; i++) {
+      engine.composer.chordIdx = 99;
+      ticks(1);
+    }
+    expect(onError).toHaveBeenCalledTimes(3);
+  });
+
+  it('survives a failing static burst while tuning quickly', async () => {
+    const { radio, onError } = makeRadio();
+    await radio.init();
+    const staticNode = nodesOf('NoiseSynth').find(
+      (c) => (c.options as { envelope: { decay: number } }).envelope.decay === 0.18,
+    )?.node.triggerAttackRelease as ReturnType<typeof vi.fn>;
+    staticNode.mockImplementation(() => {
+      throw new Error('Start time must be strictly greater than previous start time');
+    });
+    expect(() => {
+      radio.changeStation(1);
+    }).not.toThrow();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(radio.stationIndex).toBe(1);
+  });
+
   it('plays a static burst when tuning while running, but not while muted', async () => {
     const { radio } = makeRadio();
     await radio.init();

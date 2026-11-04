@@ -81,6 +81,6 @@ export class Radio {
 
   dispose(): void {
     this.engine.dispose();
-    this.store.set({ started: false });
+    this.store.set({ started: false, phase: 'CRUISE' });
   }
 }

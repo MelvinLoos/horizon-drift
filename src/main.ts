@@ -948,7 +948,13 @@ const input = new InputController(
 
 // UI Button Listeners
 document.getElementById('start-journey-btn').addEventListener('click', async () => {
-  await radio.init();
+  try {
+    await radio.init();
+  } catch (error) {
+    // Audio is optional: a blocked or failing audio context must not keep the player out.
+    console.error('[radio] could not start audio', error);
+    showToast('AUDIO UNAVAILABLE');
+  }
   const overlay = requireEl('ignition-overlay');
   overlay.style.opacity = '0';
   setTimeout(() => (overlay.style.display = 'none'), 700);

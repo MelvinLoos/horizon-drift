@@ -45,7 +45,13 @@ export class ToastQueue {
       this.restartTimer(this.queue.length > 0 ? this.timing.busyHoldMs : this.timing.holdMs);
       return;
     }
-    if (this.queue.includes(message)) return;
+    // A repeat of a waiting message moves to the back, so the last state shown is the latest one.
+    const waiting = this.queue.indexOf(message);
+    if (waiting >= 0) {
+      this.queue.splice(waiting, 1);
+      this.queue.push(message);
+      return;
+    }
     if (this.current === null) {
       this.display(message);
       return;

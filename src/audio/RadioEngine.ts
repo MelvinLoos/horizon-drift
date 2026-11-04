@@ -17,30 +17,22 @@ export interface EngineHooks {
   onError(error: unknown): void;
 }
 
-/** Reverb/delay/FM settings per style. */
-const STYLE_FX: Readonly<Record<StationStyle, { reverb: number; delay: number; fmIndex: number }>> = {
-  ambient: { reverb: 0.68, delay: 0.45, fmIndex: 1.4 },
-  lofi: { reverb: 0.34, delay: 0.24, fmIndex: 1.8 },
-  cyber: { reverb: 0.38, delay: 0.36, fmIndex: 4.2 },
-  synthwave: { reverb: 0.44, delay: 0.34, fmIndex: 2.6 },
-  americana: { reverb: 0.44, delay: 0.34, fmIndex: 2.6 },
-};
-
-const SWING: Readonly<Record<StationStyle, number>> = {
-  lofi: 0.22,
-  americana: 0.08,
-  synthwave: 0.02,
-  ambient: 0.02,
-  cyber: 0.02,
+/** Everything that varies per station style, in one place. */
+const STYLE: Readonly<
+  Record<StationStyle, { reverb: number; delay: number; fmIndex: number; swing: number; arpCutoff: number }>
+> = {
+  ambient: { reverb: 0.68, delay: 0.45, fmIndex: 1.4, swing: 0.02, arpCutoff: 1800 },
+  lofi: { reverb: 0.34, delay: 0.24, fmIndex: 1.8, swing: 0.22, arpCutoff: 1100 },
+  cyber: { reverb: 0.38, delay: 0.36, fmIndex: 4.2, swing: 0.02, arpCutoff: 1650 },
+  synthwave: { reverb: 0.44, delay: 0.34, fmIndex: 2.6, swing: 0.02, arpCutoff: 1650 },
+  americana: { reverb: 0.44, delay: 0.34, fmIndex: 2.6, swing: 0.08, arpCutoff: 1650 },
 };
 
 const MUTE_DB = -70;
 const MUTE_RAMP_S = 0.12;
 
-/** Arp filter base cutoff per style; opens up with driving speed. */
-function arpBaseCutoff(style: StationStyle): number {
-  return style === 'lofi' ? 1100 : style === 'ambient' ? 1800 : 1650;
-}
+/** Errors reported per engine; a deterministic fault would otherwise fire every 16th note. */
+const MAX_REPORTED_ERRORS = 3;
 
 /**
  * The Tone.js side of the radio: builds the synth graph and plays the events the pure composer
@@ -49,6 +41,8 @@ function arpBaseCutoff(style: StationStyle): number {
 export class RadioEngine {
   readonly composer: ComposerState = createComposerState();
   private started = false;
+  private starting: Promise<void> | null = null;
+  private reportedErrors = 0;
   private muted = false;
   private volumeDb = -6;
   private station: Station;
@@ -84,8 +78,13 @@ export class RadioEngine {
     return this.started;
   }
 
-  async start(): Promise<void> {
-    if (this.started) return;
+  /** Idempotent and safe to call twice while the audio context is still starting. */
+  start(): Promise<void> {
+    this.starting ??= this.doStart();
+    return this.starting;
+  }
+
+  private async doStart(): Promise<void> {
     await Tone.start();
     resetForStation(this.composer, this.station, this.rng);
     this.graph = this.buildGraph();
@@ -98,9 +97,16 @@ export class RadioEngine {
   /** Switches the station; safe before `start()` (only the composer state changes then). */
   setStation(station: Station, withStaticBurst: boolean): void {
     this.station = station;
+    if (!this.graph) return; // before start: only remember it (start() picks the progression)
     resetForStation(this.composer, station, this.rng);
-    if (!this.graph) return;
-    if (withStaticBurst && !this.muted) this.graph.staticNoise.triggerAttackRelease('16n');
+    if (withStaticBurst && !this.muted) {
+      try {
+        this.graph.staticNoise.triggerAttackRelease('16n');
+      } catch (error) {
+        // Tone rejects two triggers at the same audio time (rapid tuning); the burst is cosmetic.
+        this.report(error);
+      }
+    }
     this.applyStation();
   }
 
@@ -118,8 +124,12 @@ export class RadioEngine {
   /** Driving intensity: faster means brighter arps and louder velocities. */
   setDrivingSpeed(speedKmh: number): void {
     this.composer.speedMod = clamp(speedKmh / 200, 0, 1);
+    this.applyDrivingFilter();
+  }
+
+  private applyDrivingFilter(): void {
     if (!this.graph) return;
-    const cutoff = arpBaseCutoff(this.station.style) + this.composer.speedMod * 2400;
+    const cutoff = STYLE[this.station.style].arpCutoff + this.composer.speedMod * 2400;
     this.graph.arpFilter.frequency.rampTo(cutoff, 0.25);
   }
 
@@ -130,6 +140,7 @@ export class RadioEngine {
     for (const node of this.graph.nodes) node.dispose();
     this.graph = null;
     this.started = false;
+    this.starting = null;
   }
 
   private applyVolume(): void {
@@ -142,12 +153,13 @@ export class RadioEngine {
     const st = this.station;
     const transport = Tone.getTransport();
     transport.bpm.rampTo(st.bpm, 0.6);
-    transport.swing = SWING[st.style];
+    const fx = STYLE[st.style];
+    transport.swing = fx.swing;
     transport.swingSubdivision = '16n';
-    const fx = STYLE_FX[st.style];
     graph.reverb.wet.value = fx.reverb;
     graph.delay.wet.value = fx.delay;
     graph.lead.set({ oscillator: { modulationIndex: fx.fmIndex } });
+    this.applyDrivingFilter();
     this.hooks.onPhase(currentPhase(this.composer));
   }
 
@@ -161,8 +173,12 @@ export class RadioEngine {
       // Keep the clock moving; a failing step must not stall the song. The error is reported,
       // not swallowed (BUG-006).
       this.composer.step++;
-      this.hooks.onError(error);
+      this.report(error);
     }
+  }
+
+  private report(error: unknown): void {
+    if (this.reportedErrors++ < MAX_REPORTED_ERRORS) this.hooks.onError(error);
   }
 
   private play(event: NoteEvent, time: number): void {
@@ -211,7 +227,7 @@ export class RadioEngine {
     const compressor = track(
       new Tone.Compressor({ threshold: -18, ratio: 3.5, attack: 0.02, release: 0.25 }),
     );
-    const masterVol = track(new Tone.Volume(this.volumeDb).toDestination());
+    const masterVol = track(new Tone.Volume(this.muted ? MUTE_DB : this.volumeDb).toDestination());
     compressor.connect(masterVol);
 
     const reverb = track(new Tone.Reverb({ decay: 4.8, wet: 0.42 }).connect(compressor));
