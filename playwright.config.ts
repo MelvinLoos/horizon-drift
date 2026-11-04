@@ -24,6 +24,8 @@ export default defineConfig({
   projects: (['legacy', 'app'] as const).map((target) => ({
     name: target,
     metadata: { target },
+    // Visual baselines belong to the app; the prototype only runs the functional specs.
+    ...(target === 'legacy' ? { grepInvert: /@visual/ } : {}),
     use: {
       ...devices['Desktop Chrome'],
       viewport: { width: 1280, height: 720 },
