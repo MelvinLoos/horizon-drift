@@ -16,6 +16,8 @@ export default defineConfig({
       thresholds: {
         'src/config/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
         'src/core/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
+        'src/audio/composer/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
+        'src/audio/notes.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
         'src/sim/**': { lines: 90, functions: 90, branches: 90, statements: 90 },
         'src/world/{colors,noise,road,landforms}.ts': {
           lines: 90,

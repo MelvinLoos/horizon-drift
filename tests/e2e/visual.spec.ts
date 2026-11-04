@@ -2,8 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { hooks, openApp, stepFrames } from './support/driver';
 
 /**
- * Visual baselines captured from the legacy prototype. Every later phase must keep matching
- * them until a commit deliberately re-approves them (`test(visual): update baselines — <why>`).
+ * Visual baselines of the app (originally captured from the legacy prototype, re-approved from the
+ * app in 2.5 — see ADR-0003). They only change in a commit named
+ * `test(visual): update baselines — <why>`, after reviewing the diff.
  * Run inside the Playwright Docker image (`pnpm test:visual`) — GPU output differs per machine.
  */
 const BIOMES = [

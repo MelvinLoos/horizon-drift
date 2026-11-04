@@ -29,11 +29,8 @@ export interface Station {
   readonly style: StationStyle;
   /** Melody scale, ascending. */
   readonly scale: readonly NoteName[];
-  /**
-   * Exactly three: the composer's phrase-end branch picks from indices 0..2 (BUG-008). Relax to
-   * `readonly Progression[]` once the composer uses `progressions.length` (Phase 2.5).
-   */
-  readonly progressions: readonly [Progression, Progression, Progression];
+  /** One or more four-chord progressions; the composer branches between whatever is listed. */
+  readonly progressions: readonly [Progression, ...Progression[]];
 }
 
 export const RADIO_STATIONS = [

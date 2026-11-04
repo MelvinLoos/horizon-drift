@@ -74,6 +74,15 @@ describe('ToastQueue', () => {
     expect(log).toEqual(['show:A', 'show:B', 'hide']);
   });
 
+  it('moves a repeated waiting message to the back so the latest state is shown last', () => {
+    queue.push('A');
+    queue.push('MUTED');
+    queue.push('ON');
+    queue.push('MUTED');
+    clock.advance(60_000);
+    expect(log.filter((l) => l.startsWith('show'))).toEqual(['show:A', 'show:ON', 'show:MUTED']);
+  });
+
   it('refreshes the timer when the current message repeats', () => {
     queue.push('A');
     clock.advance(2000);
